@@ -7,6 +7,7 @@ Resultado: datos/partidos.json  e  informe.html (con los datos cifrados con esa 
 import base64
 import functools
 import getpass
+import hashlib
 import json
 import os
 import unicodedata
@@ -209,7 +210,8 @@ def foto(uuid):
 
 def cifra(datos, clave, iteraciones=600_000):
     """Cifra los datos con AES-GCM usando una clave derivada de la contraseña (PBKDF2-SHA256)."""
-    sal, iv = os.urandom(16), os.urandom(12)
+    # Sal fija por equipo: así la clave guardada en la pestaña sigue valiendo tras cada actualización.
+    sal, iv = hashlib.sha256(f"estadisticas-{EQUIPO_ID}".encode()).digest()[:16], os.urandom(12)
     llave = PBKDF2HMAC(hashes.SHA256(), 32, sal, iteraciones).derive(clave.encode())
     b64 = lambda b: base64.b64encode(b).decode()
     return {"sal": b64(sal), "iv": b64(iv), "iteraciones": iteraciones,
@@ -243,7 +245,8 @@ def main():
 
     salida = {"equipo": "PONCE PUCELA BASKET B3",
               "competicion": "2ª División Cadete Femenino · Grupo C",
-              "actualizado": datetime.now().strftime("%d/%m/%Y %H:%M"), "jugadoras": jugadoras}
+              "actualizado": datetime.now().strftime("%d/%m/%Y %H:%M"), "jugadoras": jugadoras,
+              "repo": os.environ.get("GITHUB_REPOSITORY")}   # para el enlace "Actualizar datos" (solo en GitHub Actions)
     (BASE / "datos").mkdir(exist_ok=True)
     sin_fotos = {**salida, "jugadoras": [{**j, "foto": bool(j["foto"])} for j in jugadoras]}
     (BASE / "datos" / "partidos.json").write_text(json.dumps(sin_fotos, ensure_ascii=False, indent=1), encoding="utf-8")

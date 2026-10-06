@@ -104,6 +104,8 @@ footer { margin-top: 32px; font-size: 12px; color: var(--muted); }
 #acceso input, #acceso button { font: inherit; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--axis);
   background: var(--page); color: var(--ink); }
 #acceso button { background: var(--s1); border-color: var(--s1); color: #fff; font-weight: 600; cursor: pointer; }
+.refresco { display: inline-block; margin-top: 8px; padding: 4px 12px; border-radius: 999px; font-size: 13px;
+  border: 1px solid var(--axis); background: var(--surface); color: var(--ink); text-decoration: none; }
 #acceso .error { color: var(--neg); font-size: 13px; margin: 0; min-height: 1em; }
 </style>
 </head>
@@ -124,6 +126,7 @@ footer { margin-top: 32px; font-size: 12px; color: var(--muted); }
       <h1 id="titulo"></h1>
       <p id="subtitulo"></p>
       <div class="meta" id="meta"></div>
+      <a class="refresco" id="refresco" target="_blank" rel="noopener" hidden>Actualizar datos ↗</a>
     </div>
   </header>
 
@@ -224,6 +227,14 @@ document.getElementById('subtitulo').textContent =
   `${dorsal ? '#' + dorsal + ' · ' : ''}${titleCase(DATOS.equipo)} · ${DATOS.competicion}`;
 document.getElementById('meta').textContent =
   `Actualizado ${DATOS.actualizado} · ${conElla.length} de ${jugados.length} partidos jugados con estadísticas`;
+
+// Enlace a GitHub para lanzar la actualización a mano ("Run workflow"); hace falta haber iniciado sesión en GitHub
+if (TODO.repo) {
+  const enlace = document.getElementById('refresco');
+  enlace.href = `https://github.com/${TODO.repo}/actions/workflows/publicar.yml`;
+  enlace.title = 'Pulsa "Run workflow" y recarga esta página en unos 2 minutos';
+  enlace.hidden = false;
+}
 
 // --- Resumen ---
 const suma = f => conElla.reduce((a, p) => a + (f(p) || 0), 0);

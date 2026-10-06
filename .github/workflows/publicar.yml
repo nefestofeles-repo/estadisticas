@@ -4,6 +4,7 @@ on:
   workflow_dispatch:          # botón "Run workflow" en la pestaña Actions
   schedule:
     - cron: "0 22 * * *"      # cada noche (~23:00/00:00 hora de Madrid)
+    - cron: "7,37 9-23 * * 6,0" # sábados y domingos cada 30 min, de ~11:00 a ~00:30 hora de Madrid
 
 permissions:
   contents: read
