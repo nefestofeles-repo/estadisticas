@@ -1,0 +1,41 @@
+name: Actualizar y publicar
+
+on:
+  workflow_dispatch:          # botón "Run workflow" en la pestaña Actions
+  schedule:
+    - cron: "0 22 * * *"      # cada noche (~23:00/00:00 hora de Madrid)
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.despliegue.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install cryptography
+      - name: Descargar datos y generar informe cifrado
+        env:
+          INFORME_CLAVE: ${{ secrets.INFORME_CLAVE }}
+          JUGADORAS: ${{ secrets.JUGADORAS }}
+          TZ: Europe/Madrid
+        run: |
+          python3 actualizar.py
+          mkdir -p web && cp informe.html web/index.html
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+      - id: despliegue
+        uses: actions/deploy-pages@v4

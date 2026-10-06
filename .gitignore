@@ -1,0 +1,5 @@
+# Datos en claro y nombres: nunca al repositorio
+datos/
+jugadoras.txt
+informe.html
+__pycache__/

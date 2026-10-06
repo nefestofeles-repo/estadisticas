@@ -1,0 +1,510 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Estadísticas cadete femenino</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb;
+  --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --ring: rgba(11,11,11,0.10);
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a;
+  --pos: #2a78d6; --neg: #e34948; --miss: #c3c2b7;
+  --good: #006300;
+  --seq: #cde2fb,#9ec5f4,#6da7ec,#3987e5,#256abf,#184f95,#0d366b;
+  --court: #c3c2b7; --court-fill: #f4f3ef;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19;
+    --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10);
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70;
+    --pos: #3987e5; --neg: #e66767; --miss: #52514e;
+    --good: #0ca30c;
+    --seq: #104281,#184f95,#1c5cab,#256abf,#3987e5,#6da7ec,#9ec5f4;
+    --court: #52514e; --court-fill: #222220;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19;
+  --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10);
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70;
+  --pos: #3987e5; --neg: #e66767; --miss: #52514e;
+  --good: #0ca30c;
+  --seq: #104281,#184f95,#1c5cab,#256abf,#3987e5,#6da7ec,#9ec5f4;
+  --court: #52514e; --court-fill: #222220;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink);
+  font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1180px; margin: 0 auto; padding: 24px 16px 48px; }
+.tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+.tabs a { display: flex; align-items: center; gap: 8px; padding: 4px 14px 4px 4px; border-radius: 999px;
+  text-decoration: none; color: var(--ink-2); background: var(--surface); box-shadow: 0 0 0 1px var(--ring); font-size: 14px; }
+.tabs a[aria-current="page"] { color: var(--ink); box-shadow: 0 0 0 2px var(--s1); font-weight: 600; }
+.avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--grid) center top / cover no-repeat;
+  display: grid; place-items: center; font-size: 12px; font-weight: 600; color: var(--ink-2); flex: none; }
+.avatar.grande { width: 96px; height: 96px; font-size: 30px; box-shadow: 0 0 0 1px var(--ring); }
+.ficha { display: flex; align-items: center; gap: 20px; }
+header h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: -0.01em; }
+header p { margin: 0; color: var(--ink-2); }
+.meta { font-size: 13px; color: var(--muted); margin-top: 6px; }
+h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-2);
+  margin: 32px 0 12px; font-weight: 600; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+.tile, .card { background: var(--surface); border-radius: 12px; box-shadow: 0 0 0 1px var(--ring); }
+.tile { padding: 14px 16px; }
+.tile .k { font-size: 13px; color: var(--ink-2); }
+.tile .v { font-size: 28px; font-weight: 600; margin-top: 2px; }
+.tile .s { font-size: 12px; color: var(--muted); }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; }
+.card { padding: 16px; min-width: 0; }
+.card h3 { margin: 0; font-size: 15px; }
+.card .sub { margin: 2px 0 10px; font-size: 13px; color: var(--muted); }
+.chart { position: relative; height: 220px; }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 13px; color: var(--ink-2); margin-bottom: 8px; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+.legend i.line { height: 3px; border-radius: 2px; width: 14px; vertical-align: 3px; }
+.empty { color: var(--muted); font-size: 14px; padding: 24px 0; text-align: center; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
+th, td { padding: 6px 8px; text-align: right; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+th { color: var(--ink-2); font-weight: 600; }
+th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
+.scroll { overflow-x: auto; }
+.heat td.c { text-align: center; font-weight: 600; min-width: 44px; }
+select { font: inherit; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--axis);
+  background: var(--surface); color: var(--ink); max-width: 100%; }
+.tl-row { display: grid; grid-template-columns: 150px minmax(0, 1fr) 64px; gap: 12px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--grid); }
+.tl-row:last-child { border-bottom: 0; }
+.tl-row .lab { font-size: 13px; }
+.tl-row .lab small { display: block; color: var(--muted); }
+.tl-row .tot { text-align: right; font-size: 13px; font-variant-numeric: tabular-nums; color: var(--ink-2); }
+.tl-row svg { display: block; width: 100%; overflow: visible; }
+@media (max-width: 560px) { .tl-row { grid-template-columns: minmax(0, 1fr) 56px; } .tl-row .lab { grid-column: 1 / -1; } }
+.court-wrap { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+.court-wrap svg { width: 100%; max-width: 360px; height: auto; }
+.court-stats { font-size: 14px; color: var(--ink-2); min-width: 160px; }
+.court-stats b { color: var(--ink); }
+.v-win { color: var(--good); font-weight: 600; }
+footer { margin-top: 32px; font-size: 12px; color: var(--muted); }
+#tip { position: fixed; pointer-events: none; background: var(--surface); color: var(--ink);
+  box-shadow: 0 0 0 1px var(--ring), 0 4px 16px rgba(0,0,0,.12); border-radius: 8px;
+  padding: 6px 10px; font-size: 12px; display: none; z-index: 10; }
+#acceso { min-height: 100vh; display: grid; place-items: center; padding: 16px; }
+#acceso form { width: 100%; max-width: 320px; background: var(--surface); box-shadow: 0 0 0 1px var(--ring);
+  border-radius: 12px; padding: 24px; display: grid; gap: 12px; }
+#acceso h1 { font-size: 18px; margin: 0; }
+#acceso input, #acceso button { font: inherit; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--axis);
+  background: var(--page); color: var(--ink); }
+#acceso button { background: var(--s1); border-color: var(--s1); color: #fff; font-weight: 600; cursor: pointer; }
+#acceso .error { color: var(--neg); font-size: 13px; margin: 0; min-height: 1em; }
+</style>
+</head>
+<body>
+<div id="acceso">
+  <form>
+    <h1>Estadísticas</h1>
+    <input type="password" id="clave" placeholder="Contraseña" autocomplete="current-password" required autofocus>
+    <button>Entrar</button>
+    <p class="error" id="errorClave"></p>
+  </form>
+</div>
+<main hidden>
+  <nav class="tabs" id="tabs" aria-label="Jugadora"></nav>
+  <header class="ficha">
+    <div class="avatar grande" id="foto"></div>
+    <div>
+      <h1 id="titulo"></h1>
+      <p id="subtitulo"></p>
+      <div class="meta" id="meta"></div>
+    </div>
+  </header>
+
+  <h2>Resumen de la temporada</h2>
+  <div class="tiles" id="tiles"></div>
+
+  <h2>Anotación y juego</h2>
+  <div class="grid">
+    <div class="card"><h3>Puntos por partido</h3><p class="sub">Puntos anotados en cada jornada</p><div class="chart"><canvas id="cPuntos"></canvas></div></div>
+    <div class="card"><h3>Minutos jugados</h3><p class="sub">Partidos de 4 cuartos de 10 minutos</p><div class="chart"><canvas id="cMinutos"></canvas></div></div>
+    <div class="card"><h3>Valoración</h3><p class="sub">Índice global del acta: positivo en azul, negativo en rojo</p><div class="chart"><canvas id="cValoracion"></canvas></div></div>
+    <div class="card"><h3>+/− con ella en pista</h3><p class="sub">Diferencia de puntos del equipo mientras jugaba</p><div class="chart"><canvas id="cMasMenos"></canvas></div></div>
+    <div class="card"><h3>Peso en el equipo</h3><p class="sub">% de los puntos del equipo anotados por ella</p><div class="chart"><canvas id="cPeso"></canvas></div></div>
+    <div class="card"><h3>Faltas personales</h3><p class="sub">Faltas cometidas por partido (eliminación con 5)</p><div class="chart"><canvas id="cFaltas"></canvas></div></div>
+  </div>
+
+  <h2>Minutos en pista</h2>
+  <div class="card">
+    <p class="sub" style="margin-top:0">Cuándo estuvo en la pista en cada partido. La cifra de cada tramo es el parcial del equipo mientras jugaba.</p>
+    <div class="legend">
+      <span><i style="background:var(--s1)"></i>En pista</span>
+      <span><i style="background:var(--grid)"></i>En el banquillo</span>
+      <span><svg width="10" height="10" style="margin-right:6px;vertical-align:-1px"><circle cx="5" cy="5" r="4" fill="var(--s3)"/></svg>Canasta</span>
+      <span><svg width="10" height="10" style="margin-right:6px;vertical-align:-1px"><path d="M1 1L9 9M9 1L1 9" stroke="var(--s2)" stroke-width="2" stroke-linecap="round"/></svg>Tiro fallado</span>
+      <span><svg width="10" height="10" style="margin-right:6px;vertical-align:-1px"><path d="M5 1L9 9H1Z" fill="var(--muted)"/></svg>Falta</span>
+    </div>
+    <div id="timeline"></div>
+  </div>
+
+  <h2>Lanzamiento</h2>
+  <div class="grid">
+    <div class="card"><h3>% de acierto</h3><p class="sub">Por tipo de lanzamiento</p>
+      <div class="legend"><span><i class="line" style="background:var(--s1)"></i>Tiros de 2</span><span><i class="line" style="background:var(--s2)"></i>Triples</span><span><i class="line" style="background:var(--s3)"></i>Tiros libres</span></div>
+      <div class="chart"><canvas id="cPct"></canvas></div></div>
+    <div class="card"><h3>Tiros de 2</h3><p class="sub">Anotados y fallados</p>
+      <div class="legend"><span><i style="background:var(--s1)"></i>Anotados</span><span><i style="background:var(--miss)"></i>Fallados</span></div>
+      <div class="chart"><canvas id="cT2"></canvas></div></div>
+    <div class="card"><h3>Triples</h3><p class="sub">Anotados y fallados</p>
+      <div class="legend"><span><i style="background:var(--s1)"></i>Anotados</span><span><i style="background:var(--miss)"></i>Fallados</span></div>
+      <div class="chart"><canvas id="cT3"></canvas></div></div>
+    <div class="card"><h3>Tiros libres</h3><p class="sub">Anotados y fallados</p>
+      <div class="legend"><span><i style="background:var(--s1)"></i>Anotados</span><span><i style="background:var(--miss)"></i>Fallados</span></div>
+      <div class="chart"><canvas id="cT1"></canvas></div></div>
+  </div>
+
+  <h2>Salto inicial</h2>
+  <div class="card scroll"><p class="sub" id="saltoSub" style="margin-top:0"></p><table id="saltos"></table></div>
+
+  <h2>Mapa de tiros</h2>
+  <div class="card">
+    <div style="margin-bottom:12px"><select id="selTiros" aria-label="Partido"></select></div>
+    <div class="court-wrap">
+      <svg id="court" viewBox="-10 -10 320 300" role="img" aria-label="Mapa de tiros en media pista"></svg>
+      <div class="court-stats" id="courtStats"></div>
+    </div>
+  </div>
+
+  <h2>Puntos por cuarto</h2>
+  <div class="card scroll"><table class="heat" id="heat"></table></div>
+
+  <h2>Detalle por partido</h2>
+  <div class="card scroll"><table id="tabla"></table></div>
+
+  <footer id="pie"></footer>
+</main>
+<div id="tip"></div>
+
+<script>
+function arrancar(TODO) {
+const IDX = Math.min(Math.max(parseInt(location.hash.slice(1)) || 0, 0), TODO.jugadoras.length - 1);
+const DATOS = { ...TODO, ...TODO.jugadoras[IDX], jugadora: TODO.jugadoras[IDX].nombre };
+addEventListener('hashchange', () => location.reload());
+
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const pct = (a, i) => i ? Math.round(100 * a / i) : null;
+const pctTxt = (a, i) => i ? Math.round(100 * a / i) + '%' : '–';
+const fmt = (v, d = 1) => v == null || isNaN(v) ? '–' : (Math.round(v * 10 ** d) / 10 ** d).toLocaleString('es-ES');
+const titleCase = s => (s || '').toLowerCase().replace(/(^|\s)\S/g, c => c.toUpperCase());
+
+const jugados = DATOS.partidos.filter(p => p.jugado);
+const conElla = jugados.filter(p => p.jugo);
+const etiqueta = p => 'J' + p.jornada;
+const resumen = p => `J${p.jornada} · ${p.local ? 'vs' : 'en'} ${titleCase(p.rival)}`;
+const marcador = p => p.jugado ? `${p.puntosEquipo}-${p.puntosRival} ${p.puntosEquipo > p.puntosRival ? '(V)' : '(D)'}` : '';
+const val = (p, f) => p.jugo ? f(p) : null;
+
+// --- Cabecera ---
+const nombre = titleCase(DATOS.jugadora);
+const iniciales = s => s.split(' ').slice(0, 2).map(w => w[0]).join('');
+const avatar = (el, j) => { if (j.foto) el.style.backgroundImage = `url("${j.foto}")`; else el.textContent = iniciales(titleCase(j.nombre)); };
+document.getElementById('tabs').innerHTML = TODO.jugadoras.map((j, k) =>
+  `<a href="#${k}" ${k === IDX ? 'aria-current="page"' : ''}><span class="avatar"></span>${titleCase(j.nombre).split(' ').slice(0, 2).join(' ')}</a>`).join('');
+document.querySelectorAll('#tabs .avatar').forEach((el, k) => avatar(el, TODO.jugadoras[k]));
+avatar(document.getElementById('foto'), DATOS);
+document.getElementById('titulo').textContent = nombre;
+const dorsal = conElla.find(p => p.dorsal)?.dorsal;
+document.getElementById('subtitulo').textContent =
+  `${dorsal ? '#' + dorsal + ' · ' : ''}${titleCase(DATOS.equipo)} · ${DATOS.competicion}`;
+document.getElementById('meta').textContent =
+  `Actualizado ${DATOS.actualizado} · ${conElla.length} de ${jugados.length} partidos jugados con estadísticas`;
+
+// --- Resumen ---
+const suma = f => conElla.reduce((a, p) => a + (f(p) || 0), 0);
+const n = conElla.length;
+const media = f => n ? suma(f) / n : null;
+const maxPts = n ? Math.max(...conElla.map(p => p.puntos)) : null;
+const tiles = [
+  ['Partidos', n, `${conElla.filter(p => p.titular).length} de titular`],
+  ['Puntos / partido', fmt(media(p => p.puntos)), `Máximo ${maxPts ?? '–'}`],
+  ['Minutos / partido', fmt(media(p => p.minutos)), `${suma(p => p.minutos)} en total`],
+  ['Valoración media', fmt(media(p => p.valoracion)), ''],
+  ['+/− medio', fmt(media(p => p.masMenos)), 'con ella en pista'],
+  ['% tiros de 2', pctTxt(suma(p => p.t2a), suma(p => p.t2i)), `${suma(p => p.t2a)}/${suma(p => p.t2i)}`],
+  ['% triples', pctTxt(suma(p => p.t3a), suma(p => p.t3i)), `${suma(p => p.t3a)}/${suma(p => p.t3i)}`],
+  ['% tiros libres', pctTxt(suma(p => p.t1a), suma(p => p.t1i)), `${suma(p => p.t1a)}/${suma(p => p.t1i)}`],
+  ['Faltas / partido', fmt(media(p => p.faltas)), ''],
+];
+const susSaltos = jugados.map(p => p.saltoInicial).filter(x => x && x.esElla);
+if (susSaltos.length) tiles.push(['Saltos iniciales', `${susSaltos.filter(x => x.ganado).length}/${susSaltos.length}`, 'ganados de los que saltó']);
+document.getElementById('tiles').innerHTML = tiles.map(([k, v, s]) =>
+  `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s}</div></div>`).join('');
+
+// --- Gráficas ---
+let charts = [];
+function base(extra = {}) {
+  const grid = css('--grid'), muted = css('--muted');
+  return {
+    responsive: true, maintainAspectRatio: false, animation: false,
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: css('--surface'), titleColor: css('--ink'), bodyColor: css('--ink-2'),
+        borderColor: css('--axis'), borderWidth: 1, padding: 10, cornerRadius: 8, boxPadding: 4,
+        callbacks: { title: items => { const p = jugados[items[0].dataIndex]; return [resumen(p), marcador(p)]; } },
+        ...(extra.tooltip || {}),
+      },
+    },
+    scales: {
+      x: { offset: true, grid: { display: false }, border: { color: css('--axis') }, ticks: { color: muted } },
+      y: { grid: { color: grid }, border: { display: false }, ticks: { color: muted, precision: 0 }, beginAtZero: true, ...(extra.y || {}) },
+    },
+  };
+}
+const labels = jugados.map(etiqueta);
+const barra = (data, color) => ({ data, backgroundColor: color, borderRadius: 4, borderSkipped: 'start', maxBarThickness: 24 });
+const linea = (label, data, color) => ({ label, data, borderColor: color, backgroundColor: color, borderWidth: 2,
+  pointRadius: 5, pointHoverRadius: 7, pointBorderColor: css('--surface'), pointBorderWidth: 2, spanGaps: true, tension: 0 });
+const noJugo = ctx => jugados[ctx.dataIndex].jugo ? undefined : 'No jugó';
+
+function chart(id, cfg) { charts.push(new Chart(document.getElementById(id), cfg)); }
+
+function dibujar() {
+  charts.forEach(c => c.destroy()); charts = [];
+  const s1 = css('--s1'), s2 = css('--s2'), s3 = css('--s3'), pos = css('--pos'), neg = css('--neg'), miss = css('--miss');
+  const signo = arr => arr.map(v => v != null && v < 0 ? neg : pos);
+  const tipNum = (sufijo = '') => ({ callbacks: {
+    title: base().plugins.tooltip.callbacks.title,
+    label: ctx => noJugo(ctx) || `${ctx.dataset.label ? ctx.dataset.label + ': ' : ''}${fmt(ctx.parsed.y)}${sufijo}` } });
+
+  chart('cPuntos', { type: 'bar', data: { labels, datasets: [{ label: 'Puntos', ...barra(jugados.map(p => val(p, p => p.puntos)), s1) }] },
+    options: base({ tooltip: tipNum(' pts') }) });
+  chart('cMinutos', { type: 'line', data: { labels, datasets: [{ label: 'Minutos', ...linea('Minutos', jugados.map(p => val(p, p => p.minutos)), s1) }] },
+    options: base({ tooltip: tipNum(' min'), y: { suggestedMax: 40 } }) });
+  const vals = jugados.map(p => val(p, p => p.valoracion));
+  chart('cValoracion', { type: 'bar', data: { labels, datasets: [{ label: 'Valoración', ...barra(vals, signo(vals)) }] },
+    options: base({ tooltip: tipNum(), y: { beginAtZero: true } }) });
+  const mm = jugados.map(p => val(p, p => p.masMenos));
+  chart('cMasMenos', { type: 'bar', data: { labels, datasets: [{ label: '+/−', ...barra(mm, signo(mm)) }] },
+    options: base({ tooltip: tipNum(), y: { beginAtZero: true } }) });
+  chart('cPeso', { type: 'line', data: { labels, datasets: [{ ...linea('% de puntos del equipo', jugados.map(p => val(p, p => pct(p.puntos, p.puntosEquipo))), s1) }] },
+    options: base({ tooltip: tipNum('%'), y: { suggestedMax: 40, ticks: { color: css('--muted'), callback: v => v + '%' } } }) });
+  chart('cFaltas', { type: 'bar', data: { labels, datasets: [{ label: 'Faltas', ...barra(jugados.map(p => val(p, p => p.faltas)), s1) }] },
+    options: base({ tooltip: tipNum(), y: { suggestedMax: 5 } }) });
+
+  chart('cPct', { type: 'line', data: { labels, datasets: [
+      linea('Tiros de 2', jugados.map(p => val(p, p => pct(p.t2a, p.t2i))), s1),
+      linea('Triples', jugados.map(p => val(p, p => pct(p.t3a, p.t3i))), s2),
+      linea('Tiros libres', jugados.map(p => val(p, p => pct(p.t1a, p.t1i))), s3)] },
+    options: base({ tooltip: { callbacks: { title: base().plugins.tooltip.callbacks.title,
+        label: ctx => { const p = jugados[ctx.dataIndex]; if (!p.jugo) return ctx.datasetIndex ? null : 'No jugó';
+          const [a, i] = [[p.t2a, p.t2i], [p.t3a, p.t3i], [p.t1a, p.t1i]][ctx.datasetIndex];
+          return `${ctx.dataset.label}: ${i ? pct(a, i) + '%' : 'sin intentos'} (${a}/${i})`; } } },
+      y: { min: 0, max: 100, ticks: { color: css('--muted'), callback: v => v + '%', stepSize: 25 } } }) });
+
+  for (const [id, a, i] of [['cT2', 't2a', 't2i'], ['cT3', 't3a', 't3i'], ['cT1', 't1a', 't1i']]) {
+    chart(id, { type: 'bar', data: { labels, datasets: [
+        { label: 'Anotados', data: jugados.map(p => val(p, p => p[a])), backgroundColor: s1, maxBarThickness: 24, borderRadius: 0, stack: 's' },
+        { label: 'Fallados', data: jugados.map(p => val(p, p => p[i] - p[a])), backgroundColor: miss, maxBarThickness: 24, stack: 's',
+          borderRadius: { topLeft: 4, topRight: 4 }, borderSkipped: false, borderWidth: { bottom: 2 }, borderColor: css('--surface') }] },
+      options: base({ tooltip: { callbacks: { title: base().plugins.tooltip.callbacks.title,
+          label: ctx => { const p = jugados[ctx.dataIndex]; if (!p.jugo) return ctx.datasetIndex ? null : 'No jugó';
+            return `${ctx.dataset.label}: ${ctx.parsed.y}`; },
+          footer: items => { const p = jugados[items[0].dataIndex]; return p.jugo && p[i] ? `Acierto: ${pct(p[a], p[i])}%` : ''; } } },
+        y: { stacked: true }, }) });
+    charts.at(-1).options.scales.x.stacked = true; charts.at(-1).update();
+  }
+  pintarPista();
+  pintarCalor();
+  pintarTimeline();
+}
+
+// --- Línea de tiempo en pista ---
+const reloj = t => { const q = t < 2400 ? Math.floor(t / 600) : 4 + Math.floor((t - 2400) / 300);
+  const ini = q < 4 ? q * 600 : 2400 + (q - 4) * 300, dur = q < 4 ? 600 : 300, r = Math.min(dur, Math.max(0, dur - (t - ini)));
+  return `${q < 4 ? (q + 1) + 'º cuarto' : 'prórroga ' + (q - 3)} ${Math.floor(r / 60)}:${String(Math.round(r % 60)).padStart(2, '0')}`; };
+const mmss = s => `${Math.floor(s / 60)} min ${String(Math.round(s % 60)).padStart(2, '0')} s`;
+function pintarTimeline() {
+  const cont = document.getElementById('timeline');
+  const filas = conElla.filter(p => p.tramos && p.tramos.length);
+  if (!filas.length) { cont.innerHTML = '<div class="empty">Sin datos de entradas y salidas.</div>'; return; }
+  const s1 = css('--s1'), s2 = css('--s2'), s3 = css('--s3'), grid = css('--grid'), surf = css('--surface'), muted = css('--muted');
+  const durMax = Math.max(...filas.map(p => p.duracion || 2400));
+  cont.innerHTML = filas.map((p, k) => `<div class="tl-row"><div class="lab">J${p.jornada} · ${titleCase(p.rival)}<small>${marcador(p)}</small></div>
+    <svg id="tl${k}" height="${k === filas.length - 1 ? 52 : 36}"></svg>
+    <div class="tot">${mmss(p.tramos.reduce((a, t) => a + t.hasta - t.desde, 0)).replace(' s', '″').replace(' min ', '′ ')}</div></div>`).join('');
+  filas.forEach((p, k) => {
+    const svg = document.getElementById('tl' + k), W = svg.getBoundingClientRect().width || 600;
+    const X = t => t / durMax * W, Y = 14, HB = 14;
+    let g = `<rect x="0" y="${Y}" width="${X(p.duracion || 2400)}" height="${HB}" rx="4" fill="${grid}"/>`;
+    for (const t of p.tramos) {
+      const x = X(t.desde) + 1, w = Math.max(2, X(t.hasta) - X(t.desde) - 2);
+      const par = t.parcial == null ? '' : (t.parcial > 0 ? '+' : '') + t.parcial;
+      const tipTxt = `Entra: ${reloj(t.desde)} · Sale: ${t.hasta >= (p.duracion || 2400) ? 'final' : reloj(t.hasta)} · ${mmss(t.hasta - t.desde)}${par ? ' · parcial ' + par : ''}`;
+      g += `<rect x="${x}" y="${Y}" width="${w}" height="${HB}" rx="4" fill="${s1}" data-tip="${tipTxt}"/>`;
+      if (par && w > 30) g += `<text x="${x + w / 2}" y="${Y + 11}" text-anchor="middle" font-size="11" font-weight="600" fill="#fff" pointer-events="none">${par}</text>`;
+    }
+    for (let q = 1; q * 600 < (p.duracion || 2400); q++) { const t = q <= 4 ? q * 600 : 2400 + (q - 4) * 300;
+      g += `<line x1="${X(t)}" x2="${X(t)}" y1="${Y - 2}" y2="${Y + HB + 2}" stroke="${surf}" stroke-width="2"/>`; }
+    for (const a of p.acciones || []) {
+      const x = X(a.t), y = 6, info = `${a.accion} · ${reloj(a.t)}`;
+      if (a.accion.startsWith('Canasta')) g += `<circle cx="${x}" cy="${y}" r="4" fill="${s3}" stroke="${surf}" stroke-width="2" data-tip="${info}"/>`;
+      else if (a.accion.startsWith('Intento')) g += `<g data-tip="${info}"><circle cx="${x}" cy="${y}" r="7" fill="transparent"/><path d="M${x - 3.5} ${y - 3.5}L${x + 3.5} ${y + 3.5}M${x + 3.5} ${y - 3.5}L${x - 3.5} ${y + 3.5}" stroke="${s2}" stroke-width="2" stroke-linecap="round"/></g>`;
+      else g += `<path d="M${x} ${y - 4}L${x + 4.5} ${y + 4}H${x - 4.5}Z" fill="${muted}" data-tip="${info}"/>`;
+    }
+    if (k === filas.length - 1) for (let m = 0; m <= durMax / 60; m += 10)
+      g += `<text x="${X(m * 60)}" y="${Y + HB + 18}" text-anchor="${m === 0 ? 'start' : m * 60 >= durMax ? 'end' : 'middle'}" font-size="11" fill="${muted}">${m}′</text>`;
+    svg.setAttribute('viewBox', `0 0 ${W} ${svg.getAttribute('height')}`);
+    svg.removeAttribute('height');
+    svg.innerHTML = g;
+  });
+}
+let rz; addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(pintarTimeline, 150); });
+
+// --- Mapa de tiros (media pista FIBA, 20 px = 1 m, canasta arriba) ---
+const M = 20, W = 15 * M, H = 14 * M, ARO = 1.575;
+const px = mmY => (mmY / 1000 + 7.5) * M;
+const py = mmX => (mmX / 1000 + ARO) * M;
+const sel = document.getElementById('selTiros');
+sel.innerHTML = '<option value="todos">Todos los partidos</option>' +
+  conElla.map((p, k) => `<option value="${k}">${resumen(p)}</option>`).join('');
+sel.addEventListener('change', pintarPista);
+
+function pintarPista() {
+  const svg = document.getElementById('court');
+  const c = css('--court'), fill = css('--court-fill'), surf = css('--surface');
+  const x3 = 6.6, y3 = ARO + Math.sqrt(6.75 ** 2 - 6.6 ** 2);
+  let g = `<rect x="0" y="0" width="${W}" height="${H}" fill="${fill}" stroke="${c}" stroke-width="1.5" rx="2"/>
+    <rect x="${(7.5 - 2.45) * M}" y="0" width="${4.9 * M}" height="${5.8 * M}" fill="none" stroke="${c}" stroke-width="1.5"/>
+    <circle cx="${W / 2}" cy="${5.8 * M}" r="${1.8 * M}" fill="none" stroke="${c}" stroke-width="1.5"/>
+    <path d="M ${(7.5 - x3) * M} 0 L ${(7.5 - x3) * M} ${y3 * M} A ${6.75 * M} ${6.75 * M} 0 0 0 ${(7.5 + x3) * M} ${y3 * M} L ${(7.5 + x3) * M} 0" fill="none" stroke="${c}" stroke-width="1.5"/>
+    <path d="M ${W / 2 - 1.8 * M} ${H} A ${1.8 * M} ${1.8 * M} 0 0 1 ${W / 2 + 1.8 * M} ${H}" fill="none" stroke="${c}" stroke-width="1.5"/>
+    <line x1="${(7.5 - 0.9) * M}" y1="${1.2 * M}" x2="${(7.5 + 0.9) * M}" y2="${1.2 * M}" stroke="${c}" stroke-width="2.5"/>
+    <circle cx="${W / 2}" cy="${ARO * M}" r="${0.225 * M}" fill="none" stroke="${c}" stroke-width="2"/>`;
+  const lista = sel.value === 'todos' ? conElla : [conElla[+sel.value]];
+  const tiros = lista.flatMap(p => (p.tiros || []).map(t => ({ ...t, p })));
+  const s1 = css('--s1'), s2 = css('--s2');
+  for (const t of tiros) {
+    const x = Math.min(Math.max(px(t.y), 4), W - 4), y = Math.min(Math.max(py(t.x), 4), H - 4);
+    const info = `${t.anotado ? 'Anotado' : 'Fallado'} · ${t.tipo === 3 ? 'triple' : 'tiro de 2'} · ${t.cuarto}º cuarto · ${resumen(t.p)}`;
+    g += t.anotado
+      ? `<circle cx="${x}" cy="${y}" r="6" fill="${s1}" stroke="${surf}" stroke-width="2" data-tip="${info}"/>`
+      : `<g data-tip="${info}"><circle cx="${x}" cy="${y}" r="9" fill="transparent"/><path d="M ${x - 5} ${y - 5} L ${x + 5} ${y + 5} M ${x + 5} ${y - 5} L ${x - 5} ${y + 5}" stroke="${s2}" stroke-width="2.5" stroke-linecap="round"/></g>`;
+  }
+  svg.innerHTML = g;
+  const cuenta = f => tiros.filter(f).length;
+  const zona = t => Math.hypot(t.x, t.y) <= 3000;
+  const fila = (k, f) => { const a = cuenta(t => f(t) && t.anotado), i = cuenta(f); return `<div>${k}: <b>${a}/${i}</b>${i ? ` (${pct(a, i)}%)` : ''}</div>`; };
+  document.getElementById('courtStats').innerHTML = tiros.length
+    ? `<div class="legend" style="flex-direction:column;gap:6px">
+         <span><i style="background:${s1};border-radius:50%"></i>Anotado</span>
+         <span><b style="color:${s2};margin-right:6px">✕</b>Fallado</span></div>
+       ${fila('Cerca del aro (&lt;3 m)', zona)}${fila('Media distancia', t => !zona(t) && t.tipo === 2)}${fila('Triples', t => t.tipo === 3)}
+       <div style="margin-top:8px;font-size:12px;color:var(--muted)">Los tiros libres no aparecen en el mapa.</div>`
+    : '<div class="empty">Sin tiros de campo registrados.</div>';
+}
+
+// --- Puntos por cuarto ---
+function pintarCalor() {
+  const seq = css('--seq').split(',').map(s => s.trim());
+  const nq = Math.max(4, ...conElla.map(p => (p.puntosCuartos || []).length));
+  const max = Math.max(1, ...conElla.flatMap(p => p.puntosCuartos || []));
+  const cab = Array.from({ length: nq }, (_, k) => k < 4 ? `${k + 1}º C` : `Prórroga ${k - 3}`);
+  const oscuro = hex => { const v = parseInt(hex.slice(1), 16); return (0.299 * (v >> 16) + 0.587 * (v >> 8 & 255) + 0.114 * (v & 255)) < 140; };
+  document.getElementById('heat').innerHTML = conElla.length ? `<tr><th>Jornada</th><th>Rival</th>${cab.map(c => `<th style="text-align:center">${c}</th>`).join('')}<th>Total</th></tr>` +
+    conElla.map(p => `<tr><td>J${p.jornada}</td><td>${titleCase(p.rival)}</td>${cab.map((_, k) => {
+      const v = (p.puntosCuartos || [])[k]; if (v == null) return '<td class="c">–</td>';
+      const bg = seq[Math.min(seq.length - 1, Math.round(v / max * (seq.length - 1)))];
+      return `<td class="c" style="background:${bg};color:${oscuro(bg) ? '#fff' : '#0b0b0b'};border:2px solid var(--surface)">${v}</td>`;
+    }).join('')}<td><b>${p.puntos}</b></td></tr>`).join('') : '<tr><td class="empty">Aún no hay partidos.</td></tr>';
+}
+
+// --- Salto inicial ---
+{
+  const conSalto = jugados.filter(p => p.saltoInicial);
+  const persona = (nom, dor) => nom ? `${titleCase(nom)}${dor ? ' (#' + dor + ')' : ''}` : '–';
+  const ganados = conSalto.filter(p => p.saltoInicial.ganado).length;
+  document.getElementById('saltoSub').textContent = conSalto.length
+    ? `El equipo ha ganado ${ganados} de ${conSalto.length} saltos iniciales; ${susSaltos.length ? nombre.split(' ')[0] + ' saltó en ' + susSaltos.length + '.' : nombre.split(' ')[0] + ' no ha saltado ninguno.'}`
+    : 'Todavía no hay saltos registrados en las actas.';
+  document.getElementById('saltos').innerHTML = conSalto.length ? `<tr><th>Jornada</th><th>Rival</th><th style="text-align:left">Saltó</th><th style="text-align:left">Contra</th><th>Resultado</th></tr>` +
+    conSalto.map(p => { const x = p.saltoInicial; return `<tr><td>J${p.jornada}</td><td>${titleCase(p.rival)}</td>
+      <td style="text-align:left">${x.esElla ? '<b>' + persona(x.saltadora, x.dorsal) + '</b>' : persona(x.saltadora, x.dorsal)}</td>
+      <td style="text-align:left">${persona(x.rival, x.rivalDorsal)}</td>
+      <td>${x.ganado ? '<span class="v-win">▲ Ganado</span>' : '▼ Perdido'}</td></tr>`; }).join('') : '';
+  const otros = jugados.flatMap(p => (p.saltos || []).slice(1).filter(x => x.esElla).map(x => ({ ...x, p })));
+  if (otros.length) document.getElementById('saltoSub').textContent +=
+    ` Además disputó ${otros.length} salto${otros.length > 1 ? 's' : ''} entre dos durante los partidos (${otros.filter(x => x.ganado).length} ganado${otros.filter(x => x.ganado).length === 1 ? '' : 's'}).`;
+}
+
+// --- Tabla detallada ---
+const cols = [['Jornada', p => 'J' + p.jornada], ['Rival', p => `${p.local ? 'vs' : 'en'} ${titleCase(p.rival)}`],
+  ['Resultado', p => p.puntosEquipo > p.puntosRival ? `<span class="v-win">${marcador(p)}</span>` : marcador(p)],
+  ['Tit.', p => p.jugo ? (p.titular ? 'Sí' : 'No') : ''], ['Min', p => p.minutos], ['Pts', p => p.puntos],
+  ['T2', p => p.jugo ? `${p.t2a}/${p.t2i}` : ''], ['T3', p => p.jugo ? `${p.t3a}/${p.t3i}` : ''], ['TL', p => p.jugo ? `${p.t1a}/${p.t1i}` : ''],
+  ['Faltas', p => p.faltas], ['+/−', p => p.jugo ? (p.masMenos > 0 ? '+' : '') + p.masMenos : ''], ['Val.', p => p.valoracion]];
+document.getElementById('tabla').innerHTML = `<tr>${cols.map(c => `<th>${c[0]}</th>`).join('')}</tr>` +
+  jugados.map(p => `<tr>${cols.map(([, f], k) => `<td>${k > 2 && !p.jugo ? (k === 3 ? (p.estadisticas ? 'No jugó' : 'Sin acta') : '') : (f(p) ?? '')}</td>`).join('')}</tr>`).join('');
+
+const sinRegistro = conElla.length && ['rebotes', 'asistencias', 'robos', 'perdidas', 'tapones'].every(k => suma(p => p[k]) === 0);
+document.getElementById('pie').innerHTML = `Fuente: actas digitales de la Federación de Baloncesto de Castilla y León (fbcyl.es).` +
+  (sinRegistro ? ' En esta competición las actas no recogen rebotes, asistencias, robos, pérdidas ni tapones, por eso no aparecen.' : '');
+
+// Tooltip del mapa de tiros
+const tip = document.getElementById('tip');
+document.addEventListener('mousemove', e => {
+  const el = e.target.closest('[data-tip]');
+  if (!el) { tip.style.display = 'none'; return; }
+  tip.textContent = el.dataset.tip; tip.style.display = 'block';
+  tip.style.left = Math.min(e.clientX + 12, innerWidth - tip.offsetWidth - 8) + 'px'; tip.style.top = (e.clientY + 12) + 'px';
+});
+
+
+Chart.defaults.font.family = 'system-ui, -apple-system, "Segoe UI", sans-serif';
+dibujar();
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', dibujar);
+new MutationObserver(dibujar).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+}
+</script>
+<script>
+// Los datos van cifrados (AES-GCM, clave derivada de la contraseña con PBKDF2); sin la contraseña no se pueden leer.
+const CIFRADO = /*__CIFRADO__*/null;
+const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+async function abrir(clave) {
+  const datos = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(CIFRADO.iv) }, clave, b64(CIFRADO.datos));
+  document.getElementById('acceso').remove();
+  document.querySelector('main').hidden = false;
+  arrancar(JSON.parse(new TextDecoder().decode(datos)));
+}
+async function derivar(password) {
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name: 'PBKDF2', hash: 'SHA-256', salt: b64(CIFRADO.sal), iterations: CIFRADO.iteraciones },
+    base, { name: 'AES-GCM', length: 256 }, true, ['decrypt']);
+}
+// La clave derivada se recuerda solo mientras la pestaña siga abierta (para cambiar de jugadora sin volver a entrar).
+(async () => {
+  try {
+    const guardada = sessionStorage.getItem('clave');
+    if (guardada) await abrir(await crypto.subtle.importKey('raw', b64(guardada), 'AES-GCM', true, ['decrypt']));
+  } catch { try { sessionStorage.removeItem('clave'); } catch {} }
+})();
+document.querySelector('#acceso form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const error = document.getElementById('errorClave');
+  error.textContent = '';
+  try {
+    const clave = await derivar(document.getElementById('clave').value);
+    await abrir(clave);
+    try { sessionStorage.setItem('clave', btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.exportKey('raw', clave))))); } catch {}
+  } catch { error.textContent = 'Contraseña incorrecta'; }
+});
+</script>
+</body>
+</html>
