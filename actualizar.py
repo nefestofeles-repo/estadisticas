@@ -124,16 +124,35 @@ def saltos(jugadas, st, objetivo):
     return {"saltoInicial": lista[0] if lista else None, "saltos": lista}
 
 
+def datos_grupo(grupo):
+    return get(f"{ESB}/FCBQWeb/getAllGamesByGrupWithMatchRecords/{grupo}", base64_body=True)["messageData"]
+
+
 def partidos_del_equipo():
     for grupo in GRUPOS:
-        datos = get(f"{ESB}/FCBQWeb/getAllGamesByGrupWithMatchRecords/{grupo}", base64_body=True)["messageData"]
-        for num, jornada in datos["rounds"].items():
+        for num, jornada in datos_grupo(grupo)["rounds"].items():
             for m in jornada["matches"].values():
                 if EQUIPO_ID in (int(m["idLocalTeam"] or 0), int(m["idVisitorTeam"] or 0)):
                     yield grupo, int(num), m
 
 
-def ficha(grupo, num, m, jugadora):
+def lanzamientos(d):
+    return {"t1a": d.get("shotsOfOneSuccessful", 0), "t1i": d.get("shotsOfOneAttempted", 0),
+            "t2a": d.get("shotsOfTwoSuccessful", 0), "t2i": d.get("shotsOfTwoAttempted", 0),
+            "t3a": d.get("shotsOfThreeSuccessful", 0), "t3i": d.get("shotsOfThreeAttempted", 0),
+            "faltas": d.get("faults", 0)}
+
+
+def estadisticas(num, m):
+    """Acta digital del partido (None si todavía no está disponible)."""
+    try:
+        return get(f"{STATS}/getJsonWithMatchStats/{m['universallyid']}?currentSeason={str(TEMPORADA_ACTUAL).lower()}")
+    except Exception as e:
+        print(f"  J{num}: sin estadísticas ({e})")
+        return None
+
+
+def partido(grupo, num, m):
     local = int(m["idLocalTeam"]) == EQUIPO_ID
     gf, gc = (m["localScore"], m["visitorScore"]) if local else (m["visitorScore"], m["localScore"])
     p = {
@@ -143,14 +162,16 @@ def ficha(grupo, num, m, jugadora):
         "jugado": gf is not None and gc is not None,
         "puntosEquipo": int(gf) if gf is not None else None,
         "puntosRival": int(gc) if gc is not None else None,
-        "estadisticas": False, "jugo": False,
+        "estadisticas": False,
     }
-    if not p["jugado"] or not m.get("universallyid"):
-        return p
-    try:
-        st = get(f"{STATS}/getJsonWithMatchStats/{m['universallyid']}?currentSeason={str(TEMPORADA_ACTUAL).lower()}")
-    except Exception as e:  # el acta digital puede no estar disponible
-        print(f"  J{num}: sin estadísticas ({e})")
+    return p
+
+
+def ficha(grupo, num, m, jugadora):
+    p = {**partido(grupo, num, m), "jugo": False}
+    local = p["local"]
+    st = estadisticas(num, m) if p["jugado"] and m.get("universallyid") else None
+    if not st:
         return p
     p["estadisticas"] = True
     objetivo = normaliza(jugadora)
@@ -171,11 +192,7 @@ def ficha(grupo, num, m, jugadora):
                 "dorsal": j.get("dorsal"), "titular": bool(j.get("starting")),
                 "minutos": j.get("timePlayed") or 0,
                 "puntos": d.get("score", 0), "valoracion": d.get("valoration", 0),
-                "masMenos": j.get("inOut", 0),
-                "t1a": d.get("shotsOfOneSuccessful", 0), "t1i": d.get("shotsOfOneAttempted", 0),
-                "t2a": d.get("shotsOfTwoSuccessful", 0), "t2i": d.get("shotsOfTwoAttempted", 0),
-                "t3a": d.get("shotsOfThreeSuccessful", 0), "t3i": d.get("shotsOfThreeAttempted", 0),
-                "faltas": d.get("faults", 0), "faltasRecibidas": d.get("faultReceived", 0),
+                "masMenos": j.get("inOut", 0), **lanzamientos(d), "faltasRecibidas": d.get("faultReceived", 0),
                 "rebotes": d.get("rebounds", 0), "asistencias": d.get("assists", 0),
                 "robos": d.get("steals", 0), "perdidas": d.get("lost", 0), "tapones": d.get("block", 0),
                 "puntosCuartos": [q.get("score", 0) for q in j.get("periods", [])],
@@ -184,6 +201,38 @@ def ficha(grupo, num, m, jugadora):
             if jugadas:
                 p.update(tramos(jugadas, objetivo, bool(j.get("starting")), local))
     return p
+
+
+def equipo(partidos_equipo):
+    """Clasificación del grupo actual y estadísticas de equipo de cada partido."""
+    entero = lambda v: int(v or 0)
+    clasificacion = [{"posicion": entero(s["position"]), "id": entero(s["idTeam"]), "equipo": s["teamName"],
+                      "logo": s.get("entityLogo"), "pj": entero(s["matchPlayed"]), "g": entero(s["matchWin"]),
+                      "p": entero(s["matchLost"]), "pf": entero(s["matchScoreFavour"]), "pc": entero(s["matchScoreAgainst"]),
+                      "puntos": entero(s["standingScore"]), "racha": entero(s.get("recentStreak"))}
+                     for s in datos_grupo(GRUPOS[-1])["standing"]]
+    seguidas = {normaliza(n) for n in JUGADORAS}
+    partidos = []
+    for grupo, num, m in partidos_equipo:
+        p = partido(grupo, num, m)
+        st = estadisticas(num, m) if p["jugado"] and m.get("universallyid") else None
+        nuestro = next((t for t in (st or {}).get("teams", []) if t.get("teamIdExtern") == EQUIPO_ID), None)
+        rival = next((t for t in (st or {}).get("teams", []) if t.get("teamIdExtern") != EQUIPO_ID), None)
+        if nuestro and rival:
+            p.update({
+                "estadisticas": True,
+                "nosotras": lanzamientos(nuestro["data"]), "ellas": lanzamientos(rival["data"]),
+                "cuartos": [q.get("score", 0) for q in nuestro.get("periods", [])],
+                "cuartosRival": [q.get("score", 0) for q in rival.get("periods", [])],
+                "jugadoras": [{"nombre": j.get("name"), "dorsal": j.get("dorsal"), "titular": bool(j.get("starting")),
+                               "jugo": (j.get("timePlayed") or 0) > 0 or (j.get("gamePlayed") or 0) > 0,
+                               "minutos": j.get("timePlayed") or 0, "puntos": j["data"].get("score", 0),
+                               "valoracion": j["data"].get("valoration", 0), "masMenos": j.get("inOut", 0),
+                               "seguida": normaliza(j.get("name")) in seguidas, **lanzamientos(j["data"])}
+                              for j in nuestro.get("players", [])],
+            })
+        partidos.append(p)
+    return {"id": EQUIPO_ID, "clasificacion": clasificacion, "partidos": partidos}
 
 
 def foto(uuid):
@@ -246,6 +295,7 @@ def main():
     salida = {"equipo": "PONCE PUCELA BASKET B3",
               "competicion": "2ª División Cadete Femenino · Grupo C",
               "actualizado": datetime.now().strftime("%d/%m/%Y %H:%M"), "jugadoras": jugadoras,
+              "equipoDatos": equipo(partidos_equipo),
               "repo": os.environ.get("GITHUB_REPOSITORY")}   # para el enlace "Actualizar datos" (solo en GitHub Actions)
     (BASE / "datos").mkdir(exist_ok=True)
     sin_fotos = {**salida, "jugadoras": [{**j, "foto": bool(j["foto"])} for j in jugadoras]}

@@ -93,6 +93,12 @@ select { font: inherit; padding: 6px 8px; border-radius: 8px; border: 1px solid 
 .court-stats { font-size: 14px; color: var(--ink-2); min-width: 160px; }
 .court-stats b { color: var(--ink); }
 .v-win { color: var(--good); font-weight: 600; }
+.v-loss { color: var(--neg); font-weight: 600; }
+.tabs a.equipo { padding-left: 14px; }
+tr.nuestro td { font-weight: 600; background: color-mix(in srgb, var(--s1) 10%, transparent); }
+td .escudo { width: 20px; height: 20px; object-fit: contain; vertical-align: -5px; margin-right: 8px; }
+th[data-orden] { cursor: pointer; user-select: none; }
+th[data-orden]:hover { color: var(--ink); }
 footer { margin-top: 32px; font-size: 12px; color: var(--muted); }
 #tip { position: fixed; pointer-events: none; background: var(--surface); color: var(--ink);
   box-shadow: 0 0 0 1px var(--ring), 0 4px 16px rgba(0,0,0,.12); border-radius: 8px;
@@ -130,6 +136,7 @@ footer { margin-top: 32px; font-size: 12px; color: var(--muted); }
     </div>
   </header>
 
+  <section id="vJugadora" hidden>
   <h2>Resumen de la temporada</h2>
   <div class="tiles" id="tiles"></div>
 
@@ -189,44 +196,103 @@ footer { margin-top: 32px; font-size: 12px; color: var(--muted); }
 
   <h2>Detalle por partido</h2>
   <div class="card scroll"><table id="tabla"></table></div>
+  </section>
+
+  <section id="vEquipo" hidden>
+  <h2>Resumen del equipo</h2>
+  <div class="tiles" id="eTiles"></div>
+
+  <h2>Clasificación</h2>
+  <div class="card scroll"><p class="sub" id="eClasSub" style="margin-top:0"></p><table id="eClas"></table></div>
+
+  <h2>Resultados</h2>
+  <div class="grid">
+    <div class="card"><h3>Puntos a favor y en contra</h3><p class="sub">Marcador de cada partido</p>
+      <div class="legend"><span><i style="background:var(--s1)"></i>Nuestro equipo</span><span><i style="background:var(--s2)"></i>Rival</span></div>
+      <div class="chart"><canvas id="eMarcador"></canvas></div></div>
+    <div class="card"><h3>Diferencia final</h3><p class="sub">Victorias en azul, derrotas en rojo</p><div class="chart"><canvas id="eDif"></canvas></div></div>
+    <div class="card"><h3>% de acierto</h3><p class="sub">Del equipo, por tipo de lanzamiento</p>
+      <div class="legend"><span><i class="line" style="background:var(--s1)"></i>Tiros de 2</span><span><i class="line" style="background:var(--s2)"></i>Triples</span><span><i class="line" style="background:var(--s3)"></i>Tiros libres</span></div>
+      <div class="chart"><canvas id="ePct"></canvas></div></div>
+    <div class="card"><h3>Faltas personales</h3><p class="sub">Cometidas por el equipo y por el rival</p>
+      <div class="legend"><span><i style="background:var(--s1)"></i>Nuestro equipo</span><span><i style="background:var(--s2)"></i>Rival</span></div>
+      <div class="chart"><canvas id="eFaltas"></canvas></div></div>
+  </div>
+
+  <h2>Parciales por cuarto</h2>
+  <div class="card scroll"><p class="sub" style="margin-top:0">Puntos del equipo y del rival en cada cuarto; el color indica quién lo ganó.</p><table id="eCuartos"></table></div>
+
+  <h2>Equipo frente a rivales</h2>
+  <div class="card scroll"><p class="sub" style="margin-top:0">Medias por partido con acta digital.</p><table id="eVs"></table></div>
+
+  <h2>Jugadoras</h2>
+  <div class="card scroll"><p class="sub" style="margin-top:0">Totales de la temporada. Pulsa una columna para ordenar.</p><table id="ePlantilla"></table></div>
+
+  <h2>Próximos partidos</h2>
+  <div class="card scroll"><table id="eCalendario"></table></div>
+  </section>
 
   <footer id="pie"></footer>
 </main>
 <div id="tip"></div>
 
 <script>
-function arrancar(TODO) {
-const IDX = Math.min(Math.max(parseInt(location.hash.slice(1)) || 0, 0), TODO.jugadoras.length - 1);
-const DATOS = { ...TODO, ...TODO.jugadoras[IDX], jugadora: TODO.jugadoras[IDX].nombre };
-addEventListener('hashchange', () => location.reload());
-
+// --- Utilidades comunes a las pestañas ---
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const pct = (a, i) => i ? Math.round(100 * a / i) : null;
 const pctTxt = (a, i) => i ? Math.round(100 * a / i) + '%' : '–';
 const fmt = (v, d = 1) => v == null || isNaN(v) ? '–' : (Math.round(v * 10 ** d) / 10 ** d).toLocaleString('es-ES');
 const titleCase = s => (s || '').toLowerCase().replace(/(^|\s)\S/g, c => c.toUpperCase());
-
-const jugados = DATOS.partidos.filter(p => p.jugado);
-const conElla = jugados.filter(p => p.jugo);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 const etiqueta = p => 'J' + p.jornada;
 const resumen = p => `J${p.jornada} · ${p.local ? 'vs' : 'en'} ${titleCase(p.rival)}`;
 const marcador = p => p.jugado ? `${p.puntosEquipo}-${p.puntosRival} ${p.puntosEquipo > p.puntosRival ? '(V)' : '(D)'}` : '';
-const val = (p, f) => p.jugo ? f(p) : null;
-
-// --- Cabecera ---
-const nombre = titleCase(DATOS.jugadora);
 const iniciales = s => s.split(' ').slice(0, 2).map(w => w[0]).join('');
+const pintarTiles = (id, tiles) => document.getElementById(id).innerHTML = tiles.map(([k, v, s]) =>
+  `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s}</div></div>`).join('');
+
+// Opciones comunes de Chart.js; el título del tooltip sale del partido de la lista
+function opciones(lista, extra = {}) {
+  const grid = css('--grid'), muted = css('--muted');
+  return {
+    responsive: true, maintainAspectRatio: false, animation: false,
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: css('--surface'), titleColor: css('--ink'), bodyColor: css('--ink-2'),
+        borderColor: css('--axis'), borderWidth: 1, padding: 10, cornerRadius: 8, boxPadding: 4,
+        callbacks: { title: items => { const p = lista[items[0].dataIndex]; return [resumen(p), marcador(p)]; } },
+        ...(extra.tooltip || {}),
+      },
+    },
+    scales: {
+      x: { offset: true, grid: { display: false }, border: { color: css('--axis') }, ticks: { color: muted } },
+      y: { grid: { color: grid }, border: { display: false }, ticks: { color: muted, precision: 0 }, beginAtZero: true, ...(extra.y || {}) },
+    },
+  };
+}
+const barra = (data, color) => ({ data, backgroundColor: color, borderRadius: 4, borderSkipped: 'start', maxBarThickness: 24 });
+const linea = (label, data, color) => ({ label, data, borderColor: color, backgroundColor: color, borderWidth: 2,
+  pointRadius: 5, pointHoverRadius: 7, pointBorderColor: css('--surface'), pointBorderWidth: 2, spanGaps: true, tension: 0 });
+
+// Redibuja las gráficas al cambiar entre tema claro y oscuro
+function alCambiarTema(f) {
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', f);
+  new MutationObserver(f).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+}
+
+function arrancar(TODO) {
+addEventListener('hashchange', () => location.reload());
+const EQUIPO = location.hash === '#equipo' && TODO.equipoDatos;
+const IDX = EQUIPO ? -1 : Math.min(Math.max(parseInt(location.hash.slice(1)) || 0, 0), TODO.jugadoras.length - 1);
+
+// --- Pestañas y enlace de actualización (comunes) ---
 const avatar = (el, j) => { if (j.foto) el.style.backgroundImage = `url("${j.foto}")`; else el.textContent = iniciales(titleCase(j.nombre)); };
 document.getElementById('tabs').innerHTML = TODO.jugadoras.map((j, k) =>
-  `<a href="#${k}" ${k === IDX ? 'aria-current="page"' : ''}><span class="avatar"></span>${titleCase(j.nombre).split(' ').slice(0, 2).join(' ')}</a>`).join('');
+  `<a href="#${k}" ${k === IDX ? 'aria-current="page"' : ''}><span class="avatar"></span>${titleCase(j.nombre).split(' ').slice(0, 2).join(' ')}</a>`).join('') +
+  (TODO.equipoDatos ? `<a href="#equipo" class="equipo" ${EQUIPO ? 'aria-current="page"' : ''}>Equipo</a>` : '');
 document.querySelectorAll('#tabs .avatar').forEach((el, k) => avatar(el, TODO.jugadoras[k]));
-avatar(document.getElementById('foto'), DATOS);
-document.getElementById('titulo').textContent = nombre;
-const dorsal = conElla.find(p => p.dorsal)?.dorsal;
-document.getElementById('subtitulo').textContent =
-  `${dorsal ? '#' + dorsal + ' · ' : ''}${titleCase(DATOS.equipo)} · ${DATOS.competicion}`;
-document.getElementById('meta').textContent =
-  `Actualizado ${DATOS.actualizado} · ${conElla.length} de ${jugados.length} partidos jugados con estadísticas`;
 
 // Enlace a GitHub para lanzar la actualización a mano ("Run workflow"); hace falta haber iniciado sesión en GitHub
 if (TODO.repo) {
@@ -235,6 +301,36 @@ if (TODO.repo) {
   enlace.title = 'Pulsa "Run workflow" y recarga esta página en unos 2 minutos';
   enlace.hidden = false;
 }
+
+Chart.defaults.font.family = 'system-ui, -apple-system, "Segoe UI", sans-serif';
+const tip = document.getElementById('tip');
+document.addEventListener('mousemove', e => {
+  const el = e.target.closest('[data-tip]');
+  if (!el) { tip.style.display = 'none'; return; }
+  tip.textContent = el.dataset.tip; tip.style.display = 'block';
+  tip.style.left = Math.min(e.clientX + 12, innerWidth - tip.offsetWidth - 8) + 'px'; tip.style.top = (e.clientY + 12) + 'px';
+});
+
+if (EQUIPO) vistaEquipo(TODO); else vistaJugadora(TODO, IDX);
+}
+
+function vistaJugadora(TODO, IDX) {
+document.getElementById('vJugadora').hidden = false;
+const DATOS = { ...TODO, ...TODO.jugadoras[IDX], jugadora: TODO.jugadoras[IDX].nombre };
+const jugados = DATOS.partidos.filter(p => p.jugado);
+const conElla = jugados.filter(p => p.jugo);
+const val = (p, f) => p.jugo ? f(p) : null;
+
+// --- Cabecera ---
+const nombre = titleCase(DATOS.jugadora);
+const foto = document.getElementById('foto');
+if (DATOS.foto) foto.style.backgroundImage = `url("${DATOS.foto}")`; else foto.textContent = iniciales(nombre);
+document.getElementById('titulo').textContent = nombre;
+const dorsal = conElla.find(p => p.dorsal)?.dorsal;
+document.getElementById('subtitulo').textContent =
+  `${dorsal ? '#' + dorsal + ' · ' : ''}${titleCase(DATOS.equipo)} · ${DATOS.competicion}`;
+document.getElementById('meta').textContent =
+  `Actualizado ${DATOS.actualizado} · ${conElla.length} de ${jugados.length} partidos jugados con estadísticas`;
 
 // --- Resumen ---
 const suma = f => conElla.reduce((a, p) => a + (f(p) || 0), 0);
@@ -254,35 +350,12 @@ const tiles = [
 ];
 const susSaltos = jugados.map(p => p.saltoInicial).filter(x => x && x.esElla);
 if (susSaltos.length) tiles.push(['Saltos iniciales', `${susSaltos.filter(x => x.ganado).length}/${susSaltos.length}`, 'ganados de los que saltó']);
-document.getElementById('tiles').innerHTML = tiles.map(([k, v, s]) =>
-  `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s}</div></div>`).join('');
+pintarTiles('tiles', tiles);
 
 // --- Gráficas ---
 let charts = [];
-function base(extra = {}) {
-  const grid = css('--grid'), muted = css('--muted');
-  return {
-    responsive: true, maintainAspectRatio: false, animation: false,
-    interaction: { mode: 'index', intersect: false },
-    plugins: {
-      legend: { display: false },
-      tooltip: {
-        backgroundColor: css('--surface'), titleColor: css('--ink'), bodyColor: css('--ink-2'),
-        borderColor: css('--axis'), borderWidth: 1, padding: 10, cornerRadius: 8, boxPadding: 4,
-        callbacks: { title: items => { const p = jugados[items[0].dataIndex]; return [resumen(p), marcador(p)]; } },
-        ...(extra.tooltip || {}),
-      },
-    },
-    scales: {
-      x: { offset: true, grid: { display: false }, border: { color: css('--axis') }, ticks: { color: muted } },
-      y: { grid: { color: grid }, border: { display: false }, ticks: { color: muted, precision: 0 }, beginAtZero: true, ...(extra.y || {}) },
-    },
-  };
-}
+const base = extra => opciones(jugados, extra);
 const labels = jugados.map(etiqueta);
-const barra = (data, color) => ({ data, backgroundColor: color, borderRadius: 4, borderSkipped: 'start', maxBarThickness: 24 });
-const linea = (label, data, color) => ({ label, data, borderColor: color, backgroundColor: color, borderWidth: 2,
-  pointRadius: 5, pointHoverRadius: 7, pointBorderColor: css('--surface'), pointBorderWidth: 2, spanGaps: true, tension: 0 });
 const noJugo = ctx => jugados[ctx.dataIndex].jugo ? undefined : 'No jugó';
 
 function chart(id, cfg) { charts.push(new Chart(document.getElementById(id), cfg)); }
@@ -468,20 +541,161 @@ const sinRegistro = conElla.length && ['rebotes', 'asistencias', 'robos', 'perdi
 document.getElementById('pie').innerHTML = `Fuente: actas digitales de la Federación de Baloncesto de Castilla y León (fbcyl.es).` +
   (sinRegistro ? ' En esta competición las actas no recogen rebotes, asistencias, robos, pérdidas ni tapones, por eso no aparecen.' : '');
 
-// Tooltip del mapa de tiros
-const tip = document.getElementById('tip');
-document.addEventListener('mousemove', e => {
-  const el = e.target.closest('[data-tip]');
-  if (!el) { tip.style.display = 'none'; return; }
-  tip.textContent = el.dataset.tip; tip.style.display = 'block';
-  tip.style.left = Math.min(e.clientX + 12, innerWidth - tip.offsetWidth - 8) + 'px'; tip.style.top = (e.clientY + 12) + 'px';
-});
-
-
-Chart.defaults.font.family = 'system-ui, -apple-system, "Segoe UI", sans-serif';
 dibujar();
-matchMedia('(prefers-color-scheme: dark)').addEventListener('change', dibujar);
-new MutationObserver(dibujar).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+alCambiarTema(dibujar);
+}
+
+// ===== Pestaña Equipo =====
+function vistaEquipo(TODO) {
+document.getElementById('vEquipo').hidden = false;
+const E = TODO.equipoDatos;
+const jugados = E.partidos.filter(p => p.jugado);
+const conActa = jugados.filter(p => p.estadisticas);
+const nuestra = E.clasificacion.find(c => c.id === E.id);
+const gana = p => p.puntosEquipo > p.puntosRival;
+
+// --- Cabecera ---
+const foto = document.getElementById('foto');
+if (nuestra?.logo) { foto.style.backgroundImage = `url("${nuestra.logo}")`; foto.style.backgroundSize = 'contain'; foto.style.backgroundColor = '#fff'; }
+else foto.textContent = iniciales(titleCase(TODO.equipo));
+document.getElementById('titulo').textContent = titleCase(TODO.equipo);
+document.getElementById('subtitulo').textContent = TODO.competicion;
+document.getElementById('meta').textContent = `Actualizado ${TODO.actualizado} · ${jugados.length} partido${jugados.length === 1 ? '' : 's'} jugado${jugados.length === 1 ? '' : 's'}, ${conActa.length} con acta digital`;
+
+// --- Resumen ---
+const n = jugados.length, v = jugados.filter(gana).length;
+const suma = (lista, f) => lista.reduce((a, p) => a + (f(p) || 0), 0);
+const tot = (quien, k) => suma(conActa, p => p[quien][k]);
+const tiro = (quien, t) => [tot(quien, `t${t}a`), tot(quien, `t${t}i`)];
+pintarTiles('eTiles', [
+  ['Clasificación', nuestra ? nuestra.posicion + 'º' : '–', nuestra ? `de ${E.clasificacion.length} · ${nuestra.puntos} puntos` : ''],
+  ['Victorias', `${v}–${n - v}`, `${n} partido${n === 1 ? '' : 's'} jugado${n === 1 ? '' : 's'}`],
+  ['Puntos a favor', fmt(n ? suma(jugados, p => p.puntosEquipo) / n : null), 'por partido'],
+  ['Puntos en contra', fmt(n ? suma(jugados, p => p.puntosRival) / n : null), 'por partido'],
+  ['Diferencia media', fmt(n ? suma(jugados, p => p.puntosEquipo - p.puntosRival) / n : null), ''],
+  ...[['% tiros de 2', 2], ['% triples', 3], ['% tiros libres', 1]].map(([k, t]) => { const [a, i] = tiro('nosotras', t); return [k, pctTxt(a, i), `${a}/${i}`]; }),
+  ['Faltas / partido', fmt(conActa.length ? tot('nosotras', 'faltas') / conActa.length : null), ''],
+]);
+
+// --- Clasificación ---
+const racha = r => r > 0 ? `<span class="v-win">${r}V</span>` : r < 0 ? `<span class="v-loss">${-r}D</span>` : '–';
+document.getElementById('eClasSub').textContent = 'Victoria 2 puntos, derrota 1. Racha: victorias (V) o derrotas (D) seguidas.';
+document.getElementById('eClas').innerHTML = `<tr><th>Pos.</th><th>Equipo</th><th>PJ</th><th>G</th><th>P</th><th>PF</th><th>PC</th><th>Dif.</th><th>Pts</th><th>Racha</th></tr>` +
+  E.clasificacion.map(c => `<tr${c.id === E.id ? ' class="nuestro"' : ''}><td>${c.posicion}</td>
+    <td>${c.logo ? `<img class="escudo" src="${esc(c.logo)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ''}${esc(titleCase(c.equipo))}</td>
+    <td>${c.pj}</td><td>${c.g}</td><td>${c.p}</td><td>${c.pf}</td><td>${c.pc}</td><td>${c.pf - c.pc > 0 ? '+' : ''}${c.pf - c.pc}</td><td><b>${c.puntos}</b></td><td>${racha(c.racha)}</td></tr>`).join('');
+
+// --- Gráficas ---
+let charts = [];
+const labels = jugados.map(etiqueta);
+const chart = (id, cfg) => charts.push(new Chart(document.getElementById(id), cfg));
+const conDatos = (p, f) => p.estadisticas ? f(p) : null;
+const sinActa = ctx => jugados[ctx.dataIndex].estadisticas ? undefined : 'Sin acta digital';
+function dibujar() {
+  charts.forEach(c => c.destroy()); charts = [];
+  const s1 = css('--s1'), s2 = css('--s2'), s3 = css('--s3'), pos = css('--pos'), neg = css('--neg');
+  const titulo = opciones(jugados).plugins.tooltip.callbacks.title;
+  const doble = (id, f, sufijo = '') => chart(id, { type: 'bar', data: { labels, datasets: [
+      { label: 'Nuestro equipo', ...barra(jugados.map(p => f(p, 'nosotras')), s1) },
+      { label: 'Rival', ...barra(jugados.map(p => f(p, 'ellas')), s2) }] },
+    options: opciones(jugados, { tooltip: { callbacks: { title: titulo,
+      label: ctx => ctx.parsed.y == null ? (ctx.datasetIndex ? null : sinActa(ctx)) : `${ctx.dataset.label}: ${ctx.parsed.y}${sufijo}` } } }) });
+
+  doble('eMarcador', (p, q) => q === 'nosotras' ? p.puntosEquipo : p.puntosRival, ' pts');
+  const dif = jugados.map(p => p.puntosEquipo - p.puntosRival);
+  chart('eDif', { type: 'bar', data: { labels, datasets: [{ label: 'Diferencia', ...barra(dif, dif.map(d => d < 0 ? neg : pos)) }] },
+    options: opciones(jugados, { tooltip: { callbacks: { title: titulo, label: ctx => `Diferencia: ${ctx.parsed.y > 0 ? '+' : ''}${ctx.parsed.y}` } } }) });
+  chart('ePct', { type: 'line', data: { labels, datasets: [
+      linea('Tiros de 2', jugados.map(p => conDatos(p, p => pct(p.nosotras.t2a, p.nosotras.t2i))), s1),
+      linea('Triples', jugados.map(p => conDatos(p, p => pct(p.nosotras.t3a, p.nosotras.t3i))), s2),
+      linea('Tiros libres', jugados.map(p => conDatos(p, p => pct(p.nosotras.t1a, p.nosotras.t1i))), s3)] },
+    options: opciones(jugados, { tooltip: { callbacks: { title: titulo,
+        label: ctx => { const p = jugados[ctx.dataIndex]; if (!p.estadisticas) return ctx.datasetIndex ? null : 'Sin acta digital';
+          const t = [2, 3, 1][ctx.datasetIndex], a = p.nosotras[`t${t}a`], i = p.nosotras[`t${t}i`];
+          return `${ctx.dataset.label}: ${i ? pct(a, i) + '%' : 'sin intentos'} (${a}/${i})`; } } },
+      y: { min: 0, max: 100, ticks: { color: css('--muted'), callback: v => v + '%', stepSize: 25 } } }) });
+  doble('eFaltas', (p, q) => conDatos(p, p => p[q].faltas));
+}
+dibujar();
+alCambiarTema(dibujar);
+
+// --- Parciales por cuarto ---
+const nq = Math.max(4, ...conActa.map(p => p.cuartos.length));
+const cab = Array.from({ length: nq }, (_, k) => k < 4 ? `${k + 1}º C` : `Prórroga ${k - 3}`);
+const parcial = (a, b) => a == null ? '<td class="c">–</td>'
+  : `<td class="c"><span class="${a > b ? 'v-win' : a < b ? 'v-loss' : ''}">${a}-${b}</span></td>`;
+const cuartosGanados = k => conActa.filter(p => p.cuartos[k] > p.cuartosRival[k]).length;
+document.getElementById('eCuartos').innerHTML = conActa.length
+  ? `<tr><th>Jornada</th><th>Rival</th>${cab.map(c => `<th style="text-align:center">${c}</th>`).join('')}<th>Final</th></tr>` +
+    conActa.map(p => `<tr><td>J${p.jornada}</td><td>${titleCase(p.rival)}</td>${cab.map((_, k) => parcial(p.cuartos[k], p.cuartosRival[k])).join('')}
+      <td>${gana(p) ? `<span class="v-win">${marcador(p)}</span>` : marcador(p)}</td></tr>`).join('') +
+    `<tr><td style="color:var(--ink-2)">Cuartos ganados</td><td></td>${cab.map((_, k) => `<td class="c">${cuartosGanados(k)}/${conActa.filter(p => p.cuartos[k] != null).length}</td>`).join('')}<td></td></tr>`
+  : '<tr><td class="empty">Aún no hay partidos con acta.</td></tr>';
+
+// --- Equipo frente a rivales ---
+const m = (quien, f) => conActa.length ? suma(conActa, p => f(p[quien], p)) / conActa.length : null;
+const filasVs = [
+  ['Puntos', (q, p) => q === p.nosotras ? p.puntosEquipo : p.puntosRival, 1],
+  ...[['Tiros de 2', 2], ['Triples', 3], ['Tiros libres', 1]].flatMap(([k, t]) => [[`${k} anotados`, q => q[`t${t}a`], 1], [`${k} intentados`, q => q[`t${t}i`], 1]]),
+  ['Faltas', q => q.faltas, 1]];
+document.getElementById('eVs').innerHTML = conActa.length
+  ? `<tr><th>Por partido</th><th style="text-align:right">Nuestro equipo</th><th>Rivales</th></tr>` +
+    filasVs.map(([k, f, d]) => `<tr><td>${k}</td><td style="text-align:right">${fmt(m('nosotras', f), d)}</td><td>${fmt(m('ellas', f), d)}</td></tr>`).join('') +
+    [['% tiros de 2', 2], ['% triples', 3], ['% tiros libres', 1]].map(([k, t]) =>
+      `<tr><td>${k}</td><td style="text-align:right">${pctTxt(...tiro('nosotras', t))}</td><td>${pctTxt(...tiro('ellas', t))}</td></tr>`).join('')
+  : '<tr><td class="empty">Aún no hay partidos con acta.</td></tr>';
+
+// --- Jugadoras (totales, ordenable) ---
+const porJugadora = new Map();
+for (const p of conActa) for (const j of p.jugadoras) {
+  if (!j.jugo) continue;
+  const a = porJugadora.get(j.nombre) || { nombre: j.nombre, dorsal: j.dorsal, seguida: j.seguida, pj: 0, tit: 0,
+    minutos: 0, puntos: 0, t1a: 0, t1i: 0, t2a: 0, t2i: 0, t3a: 0, t3i: 0, faltas: 0, masMenos: 0, valoracion: 0 };
+  a.pj++; a.tit += j.titular ? 1 : 0; a.dorsal = j.dorsal || a.dorsal;
+  for (const k of ['minutos', 'puntos', 't1a', 't1i', 't2a', 't2i', 't3a', 't3i', 'faltas', 'masMenos', 'valoracion']) a[k] += j[k] || 0;
+  porJugadora.set(j.nombre, a);
+}
+const colsJ = [
+  ['#', j => j.dorsal ?? '', j => +j.dorsal || 0],
+  ['Jugadora', j => j.seguida ? `<b>${esc(titleCase(j.nombre))}</b>` : esc(titleCase(j.nombre)), j => j.nombre],
+  ['PJ', j => j.pj, j => j.pj], ['Tit.', j => j.tit, j => j.tit],
+  ['Min/p', j => fmt(j.minutos / j.pj), j => j.minutos / j.pj],
+  ['Pts', j => j.puntos, j => j.puntos], ['Pts/p', j => fmt(j.puntos / j.pj), j => j.puntos / j.pj],
+  ['T2', j => `${j.t2a}/${j.t2i}`, j => j.t2a], ['T3', j => `${j.t3a}/${j.t3i}`, j => j.t3a], ['TL', j => `${j.t1a}/${j.t1i}`, j => j.t1a],
+  ['% TL', j => pctTxt(j.t1a, j.t1i), j => j.t1i ? j.t1a / j.t1i : -1],
+  ['Faltas', j => j.faltas, j => j.faltas], ['+/−', j => (j.masMenos > 0 ? '+' : '') + j.masMenos, j => j.masMenos],
+  ['Val.', j => j.valoracion, j => j.valoracion]];
+let orden = 5, asc = false;
+function pintarPlantilla() {
+  const filas = [...porJugadora.values()].sort((a, b) => {
+    const x = colsJ[orden][2](a), y = colsJ[orden][2](b);
+    return (x < y ? -1 : x > y ? 1 : 0) * (asc ? 1 : -1);
+  });
+  document.getElementById('ePlantilla').innerHTML = filas.length
+    ? `<tr>${colsJ.map((c, k) => `<th data-orden="${k}">${c[0]}${k === orden ? (asc ? ' ▲' : ' ▼') : ''}</th>`).join('')}</tr>` +
+      filas.map(j => `<tr>${colsJ.map(c => `<td>${c[1](j)}</td>`).join('')}</tr>`).join('')
+    : '<tr><td class="empty">Aún no hay partidos con acta.</td></tr>';
+}
+document.getElementById('ePlantilla').addEventListener('click', e => {
+  const th = e.target.closest('th[data-orden]'); if (!th) return;
+  const k = +th.dataset.orden;
+  asc = k === orden ? !asc : k <= 1; orden = k;
+  pintarPlantilla();
+});
+pintarPlantilla();
+
+// --- Próximos partidos ---
+const pendientes = E.partidos.filter(p => !p.jugado);
+const fecha = s => { const d = new Date((s || '').replace(' ', 'T'));
+  return isNaN(d) ? '' : d.toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' }) +
+    (d.getHours() || d.getMinutes() ? ' · ' + d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : ''); };
+document.getElementById('eCalendario').innerHTML = pendientes.length
+  ? `<tr><th>Jornada</th><th>Fecha</th><th style="text-align:left">Partido</th><th style="text-align:left">Rival</th><th style="text-align:left">Pabellón</th></tr>` +
+    pendientes.map(p => `<tr><td>J${p.jornada}</td><td>${fecha(p.fecha)}</td><td style="text-align:left">${p.local ? 'En casa' : 'Fuera'}</td>
+      <td style="text-align:left">${esc(titleCase(p.rival))}</td><td style="text-align:left">${esc(titleCase([p.pabellon, p.localidad].filter(Boolean).join(', ')))}</td></tr>`).join('')
+  : '<tr><td class="empty">No quedan partidos en esta fase.</td></tr>';
+
+document.getElementById('pie').textContent = 'Fuente: clasificación y actas digitales de la Federación de Baloncesto de Castilla y León (fbcyl.es).';
 }
 </script>
 <script>
