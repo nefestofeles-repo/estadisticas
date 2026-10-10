@@ -102,9 +102,47 @@ def _resta(a, b):
     return a - b if a is not None and b is not None else None
 
 
+def defensa(jugadas, objetivo, titular, nuestro):
+    """Puntos y tiros de campo del rival con la jugadora en pista y en el banquillo (jugada a jugada)."""
+    fin = max([segundo(j) for j in jugadas if j.get("move") == "Fin de período"] or [2400])
+    d = dict.fromkeys(("segPista", "ptsPista", "tcaPista", "tciPista", "ptsBanco", "tcaBanco", "tciBanco"), 0)
+    en_pista, desde = titular, 0
+    for j in jugadas:
+        mov = j.get("move") or ""
+        if j.get("idTeam") == nuestro:
+            if normaliza(j.get("actorName")) == objetivo:
+                if mov == "Entra al campo" and not en_pista:
+                    en_pista, desde = True, segundo(j)
+                elif mov == "Sale del campo" and en_pista:
+                    en_pista, d["segPista"] = False, d["segPista"] + segundo(j) - desde
+            continue
+        if not mov.startswith(("Canasta de", "Intento fallado de")):
+            continue
+        lado, valor, anotado = "Pista" if en_pista else "Banco", int(mov[-1]) if mov[-1].isdigit() else 0, mov.startswith("Canasta")
+        d["pts" + lado] += valor if anotado else 0
+        if valor in (2, 3):
+            d["tci" + lado] += 1
+            d["tca" + lado] += anotado
+    if en_pista:
+        d["segPista"] += fin - desde
+    d["segBanco"] = fin - d["segPista"]
+    return d
+
+
+def jugadas_de(m):
+    try:
+        return get(f"{STATS}/getJsonWithMatchMoves/{m['universallyid']}?currentSeason={str(TEMPORADA_ACTUAL).lower()}")
+    except Exception:
+        return []
+
+
+def id_interno(st):
+    return next((t["teamIdIntern"] for t in st.get("teams", []) if t.get("teamIdExtern") == EQUIPO_ID), None)
+
+
 def saltos(jugadas, st, objetivo):
     """Salto inicial y saltos entre dos a partir del jugada a jugada."""
-    nuestro = next((t["teamIdIntern"] for t in st.get("teams", []) if t.get("teamIdExtern") == EQUIPO_ID), None)
+    nuestro = id_interno(st)
     por_momento = {}
     for j in jugadas:
         if (j.get("move") or "").startswith("Salto "):
@@ -175,10 +213,7 @@ def ficha(grupo, num, m, jugadora):
         return p
     p["estadisticas"] = True
     objetivo = normaliza(jugadora)
-    try:
-        jugadas = get(f"{STATS}/getJsonWithMatchMoves/{m['universallyid']}?currentSeason={str(TEMPORADA_ACTUAL).lower()}")
-    except Exception:
-        jugadas = []
+    jugadas = jugadas_de(m)
     if jugadas:
         p.update(saltos(jugadas, st, objetivo))
     for equipo in st.get("teams", []):
@@ -200,6 +235,7 @@ def ficha(grupo, num, m, jugadora):
             })
             if jugadas:
                 p.update(tramos(jugadas, objetivo, bool(j.get("starting")), local))
+                p["defensa"] = defensa(jugadas, objetivo, bool(j.get("starting")), id_interno(st))
     return p
 
 
@@ -219,6 +255,7 @@ def equipo(partidos_equipo):
         nuestro = next((t for t in (st or {}).get("teams", []) if t.get("teamIdExtern") == EQUIPO_ID), None)
         rival = next((t for t in (st or {}).get("teams", []) if t.get("teamIdExtern") != EQUIPO_ID), None)
         if nuestro and rival:
+            jugadas = jugadas_de(m)
             p.update({
                 "estadisticas": True,
                 "nosotras": lanzamientos(nuestro["data"]), "ellas": lanzamientos(rival["data"]),
@@ -228,7 +265,9 @@ def equipo(partidos_equipo):
                                "jugo": (j.get("timePlayed") or 0) > 0 or (j.get("gamePlayed") or 0) > 0,
                                "minutos": j.get("timePlayed") or 0, "puntos": j["data"].get("score", 0),
                                "valoracion": j["data"].get("valoration", 0), "masMenos": j.get("inOut", 0),
-                               "seguida": normaliza(j.get("name")) in seguidas, **lanzamientos(j["data"])}
+                               "seguida": normaliza(j.get("name")) in seguidas, **lanzamientos(j["data"]),
+                               "defensa": defensa(jugadas, normaliza(j.get("name")), bool(j.get("starting")),
+                                                  nuestro["teamIdIntern"]) if jugadas else None}
                               for j in nuestro.get("players", [])],
             })
         partidos.append(p)

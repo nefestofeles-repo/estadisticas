@@ -226,7 +226,7 @@ footer { margin-top: 32px; font-size: 12px; color: var(--muted); }
   <div class="card scroll"><p class="sub" style="margin-top:0">Medias por partido con acta digital.</p><table id="eVs"></table></div>
 
   <h2>Jugadoras</h2>
-  <div class="card scroll"><p class="sub" style="margin-top:0">Totales de la temporada. Pulsa una columna para ordenar.</p><table id="ePlantilla"></table></div>
+  <div class="card scroll"><p class="sub" style="margin-top:0">Totales de la temporada. Pulsa una columna para ordenar. Def.: puntos del rival por cada 40 minutos con ella en pista (cuanto más bajo, mejor).</p><table id="ePlantilla"></table></div>
 
   <h2>Próximos partidos</h2>
   <div class="card scroll"><table id="eCalendario"></table></div>
@@ -247,6 +247,9 @@ const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '
 const etiqueta = p => 'J' + p.jornada;
 const resumen = p => `J${p.jornada} · ${p.local ? 'vs' : 'en'} ${titleCase(p.rival)}`;
 const marcador = p => p.jugado ? `${p.puntosEquipo}-${p.puntosRival} ${p.puntosEquipo > p.puntosRival ? '(V)' : '(D)'}` : '';
+// Rating defensivo: puntos del rival por cada 40 minutos (cuanto más bajo, mejor)
+const rating = (pts, seg) => seg >= 60 ? pts * 2400 / seg : null;
+const sumaDefensa = lista => lista.reduce((a, d) => { if (d) for (const k in d) a[k] = (a[k] || 0) + d[k]; return a; }, {});
 const iniciales = s => s.split(' ').slice(0, 2).map(w => w[0]).join('');
 const pintarTiles = (id, tiles) => document.getElementById(id).innerHTML = tiles.map(([k, v, s]) =>
   `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s}</div></div>`).join('');
@@ -341,6 +344,8 @@ const tiles = [
   ['Partidos', n, `${conElla.filter(p => p.titular).length} de titular`],
   ['Puntos / partido', fmt(media(p => p.puntos)), `Máximo ${maxPts ?? '–'}`],
   ['Minutos / partido', fmt(media(p => p.minutos)), `${suma(p => p.minutos)} en total`],
+  ['Puntos / minuto', fmt(suma(p => p.minutos) ? suma(p => p.puntos) / suma(p => p.minutos) : null, 2),
+    suma(p => p.minutos) ? `${fmt(40 * suma(p => p.puntos) / suma(p => p.minutos))} por 40 min` : ''],
   ['Valoración media', fmt(media(p => p.valoracion)), ''],
   ['+/− medio', fmt(media(p => p.masMenos)), 'con ella en pista'],
   ['% tiros de 2', pctTxt(suma(p => p.t2a), suma(p => p.t2i)), `${suma(p => p.t2a)}/${suma(p => p.t2i)}`],
@@ -348,6 +353,10 @@ const tiles = [
   ['% tiros libres', pctTxt(suma(p => p.t1a), suma(p => p.t1i)), `${suma(p => p.t1a)}/${suma(p => p.t1i)}`],
   ['Faltas / partido', fmt(media(p => p.faltas)), ''],
 ];
+const def = sumaDefensa(conElla.map(p => p.defensa));
+if (def.segPista) tiles.push(
+  ['Rating defensivo', fmt(rating(def.ptsPista, def.segPista)), `pts del rival / 40 min con ella · ${fmt(rating(def.ptsBanco, def.segBanco))} sin ella`],
+  ['% tiro del rival', pctTxt(def.tcaPista, def.tciPista), `con ella en pista · ${pctTxt(def.tcaBanco, def.tciBanco)} sin ella`]);
 const susSaltos = jugados.map(p => p.saltoInicial).filter(x => x && x.esElla);
 if (susSaltos.length) tiles.push(['Saltos iniciales', `${susSaltos.filter(x => x.ganado).length}/${susSaltos.length}`, 'ganados de los que saltó']);
 pintarTiles('tiles', tiles);
@@ -532,13 +541,16 @@ function pintarCalor() {
 const cols = [['Jornada', p => 'J' + p.jornada], ['Rival', p => `${p.local ? 'vs' : 'en'} ${titleCase(p.rival)}`],
   ['Resultado', p => p.puntosEquipo > p.puntosRival ? `<span class="v-win">${marcador(p)}</span>` : marcador(p)],
   ['Tit.', p => p.jugo ? (p.titular ? 'Sí' : 'No') : ''], ['Min', p => p.minutos], ['Pts', p => p.puntos],
+  ['Pts/min', p => fmt(p.minutos ? p.puntos / p.minutos : null, 2)],
+  ['Def.', p => p.defensa ? fmt(rating(p.defensa.ptsPista, p.defensa.segPista)) : ''],
   ['T2', p => p.jugo ? `${p.t2a}/${p.t2i}` : ''], ['T3', p => p.jugo ? `${p.t3a}/${p.t3i}` : ''], ['TL', p => p.jugo ? `${p.t1a}/${p.t1i}` : ''],
   ['Faltas', p => p.faltas], ['+/−', p => p.jugo ? (p.masMenos > 0 ? '+' : '') + p.masMenos : ''], ['Val.', p => p.valoracion]];
 document.getElementById('tabla').innerHTML = `<tr>${cols.map(c => `<th>${c[0]}</th>`).join('')}</tr>` +
   jugados.map(p => `<tr>${cols.map(([, f], k) => `<td>${k > 2 && !p.jugo ? (k === 3 ? (p.estadisticas ? 'No jugó' : 'Sin acta') : '') : (f(p) ?? '')}</td>`).join('')}</tr>`).join('');
 
 const sinRegistro = conElla.length && ['rebotes', 'asistencias', 'robos', 'perdidas', 'tapones'].every(k => suma(p => p[k]) === 0);
-document.getElementById('pie').innerHTML = `Fuente: actas digitales de la Federación de Baloncesto de Castilla y León (fbcyl.es).` +
+document.getElementById('pie').innerHTML = `Fuente: actas digitales de la Federación de Baloncesto de Castilla y León (fbcyl.es). ` +
+  `Rating defensivo (Def.): puntos que anota el rival por cada 40 minutos con ella en pista; cuanto más bajo, mejor. Mide la defensa de las cinco que están en pista, no solo la suya, y con pocos partidos varía mucho.` +
   (sinRegistro ? ' En esta competición las actas no recogen rebotes, asistencias, robos, pérdidas ni tapones, por eso no aparecen.' : '');
 
 dibujar();
@@ -650,8 +662,9 @@ const porJugadora = new Map();
 for (const p of conActa) for (const j of p.jugadoras) {
   if (!j.jugo) continue;
   const a = porJugadora.get(j.nombre) || { nombre: j.nombre, dorsal: j.dorsal, seguida: j.seguida, pj: 0, tit: 0,
-    minutos: 0, puntos: 0, t1a: 0, t1i: 0, t2a: 0, t2i: 0, t3a: 0, t3i: 0, faltas: 0, masMenos: 0, valoracion: 0 };
+    minutos: 0, puntos: 0, t1a: 0, t1i: 0, t2a: 0, t2i: 0, t3a: 0, t3i: 0, faltas: 0, masMenos: 0, valoracion: 0, defensas: [] };
   a.pj++; a.tit += j.titular ? 1 : 0; a.dorsal = j.dorsal || a.dorsal;
+  a.defensas.push(j.defensa);
   for (const k of ['minutos', 'puntos', 't1a', 't1i', 't2a', 't2i', 't3a', 't3i', 'faltas', 'masMenos', 'valoracion']) a[k] += j[k] || 0;
   porJugadora.set(j.nombre, a);
 }
@@ -661,10 +674,13 @@ const colsJ = [
   ['PJ', j => j.pj, j => j.pj], ['Tit.', j => j.tit, j => j.tit],
   ['Min/p', j => fmt(j.minutos / j.pj), j => j.minutos / j.pj],
   ['Pts', j => j.puntos, j => j.puntos], ['Pts/p', j => fmt(j.puntos / j.pj), j => j.puntos / j.pj],
+  ['Pts/min', j => fmt(j.minutos ? j.puntos / j.minutos : null, 2), j => j.minutos ? j.puntos / j.minutos : -1],
   ['T2', j => `${j.t2a}/${j.t2i}`, j => j.t2a], ['T3', j => `${j.t3a}/${j.t3i}`, j => j.t3a], ['TL', j => `${j.t1a}/${j.t1i}`, j => j.t1a],
   ['% TL', j => pctTxt(j.t1a, j.t1i), j => j.t1i ? j.t1a / j.t1i : -1],
   ['Faltas', j => j.faltas, j => j.faltas], ['+/−', j => (j.masMenos > 0 ? '+' : '') + j.masMenos, j => j.masMenos],
-  ['Val.', j => j.valoracion, j => j.valoracion]];
+  ['Val.', j => j.valoracion, j => j.valoracion],
+  ['Def.', j => fmt(defJ(j)), j => defJ(j) ?? Infinity, true]];
+function defJ(j) { const d = sumaDefensa(j.defensas); return rating(d.ptsPista || 0, d.segPista || 0); }
 let orden = 5, asc = false;
 function pintarPlantilla() {
   const filas = [...porJugadora.values()].sort((a, b) => {
@@ -679,7 +695,7 @@ function pintarPlantilla() {
 document.getElementById('ePlantilla').addEventListener('click', e => {
   const th = e.target.closest('th[data-orden]'); if (!th) return;
   const k = +th.dataset.orden;
-  asc = k === orden ? !asc : k <= 1; orden = k;
+  asc = k === orden ? !asc : k <= 1 || !!colsJ[k][3]; orden = k;
   pintarPlantilla();
 });
 pintarPlantilla();
