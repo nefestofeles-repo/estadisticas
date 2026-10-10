@@ -246,7 +246,7 @@ const titleCase = s => (s || '').toLowerCase().replace(/(^|\s)\S/g, c => c.toUpp
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 const etiqueta = p => 'J' + p.jornada;
 const resumen = p => `J${p.jornada} · ${p.local ? 'vs' : 'en'} ${titleCase(p.rival)}`;
-const marcador = p => p.jugado ? `${p.puntosEquipo}-${p.puntosRival} ${p.puntosEquipo > p.puntosRival ? '(V)' : '(D)'}` : '';
+const marcador = p => p.jugado ? `${p.puntosEquipo}-${p.puntosRival} ${p.enJuego ? '(en juego)' : p.puntosEquipo > p.puntosRival ? '(V)' : '(D)'}` : '';
 // Rating defensivo: puntos del rival por cada 40 minutos (cuanto más bajo, mejor)
 const rating = (pts, seg) => seg >= 60 ? pts * 2400 / seg : null;
 const sumaDefensa = lista => lista.reduce((a, d) => { if (d) for (const k in d) a[k] = (a[k] || 0) + d[k]; return a; }, {});
