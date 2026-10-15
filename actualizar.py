@@ -269,13 +269,38 @@ def ficha(base, jugadora):
     return p
 
 
+def racha(valor):
+    """Racha actual: +N victorias o -N derrotas seguidas.
+
+    La federación la da como un número ("1") o como resultados por jornada separados por ";"
+    ("1;0;-1": 1 victoria, -1 derrota, 0 sin partido), del más antiguo al más reciente.
+    """
+    resultados = [r for r in (int(x) for x in str(valor or "0").split(";") if x.strip().lstrip("-").isdigit()) if r]
+    if len(resultados) <= 1:
+        return resultados[0] if resultados else 0
+    signo, n = (1 if resultados[-1] > 0 else -1), 0
+    for r in reversed(resultados):
+        if (r > 0) != (signo > 0):
+            break
+        n += 1
+    return signo * n
+
+
 def clasificacion():
-    """Clasificación del grupo actual."""
+    """Clasificación del grupo actual (vacía si la federación devuelve algo inesperado)."""
+    try:
+        return _clasificacion()
+    except Exception as e:
+        print(f"Sin clasificación ({e!r})")
+        return []
+
+
+def _clasificacion():
     entero = lambda v: int(v or 0)
     return [{"posicion": entero(s["position"]), "id": entero(s["idTeam"]), "equipo": s["teamName"],
                       "logo": s.get("entityLogo"), "pj": entero(s["matchPlayed"]), "g": entero(s["matchWin"]),
                       "p": entero(s["matchLost"]), "pf": entero(s["matchScoreFavour"]), "pc": entero(s["matchScoreAgainst"]),
-                      "puntos": entero(s["standingScore"]), "racha": entero(s.get("recentStreak"))}
+                      "puntos": entero(s["standingScore"]), "racha": racha(s.get("recentStreak"))}
                      for s in datos_grupo(GRUPOS[-1])["standing"]]
 
 
