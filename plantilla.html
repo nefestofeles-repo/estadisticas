@@ -95,6 +95,8 @@ select { font: inherit; padding: 6px 8px; border-radius: 8px; border: 1px solid 
 .v-win { color: var(--good); font-weight: 600; }
 .v-loss { color: var(--neg); font-weight: 600; }
 .tabs a.equipo { padding-left: 14px; }
+a.gcal { display: inline-block; white-space: nowrap; padding: 3px 10px; border-radius: 999px; font-size: 13px; color: var(--s1); text-decoration: none; border: 1px solid color-mix(in srgb, var(--s1) 40%, transparent); }
+a.gcal:hover { background: color-mix(in srgb, var(--s1) 10%, transparent); }
 tr.nuestro td { font-weight: 600; background: color-mix(in srgb, var(--s1) 10%, transparent); }
 td .escudo { width: 20px; height: 20px; object-fit: contain; vertical-align: -5px; margin-right: 8px; }
 th[data-orden] { cursor: pointer; user-select: none; }
@@ -705,10 +707,26 @@ const pendientes = E.partidos.filter(p => !p.jugado);
 const fecha = s => { const d = new Date((s || '').replace(' ', 'T'));
   return isNaN(d) ? '' : d.toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' }) +
     (d.getHours() || d.getMinutes() ? ' · ' + d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : ''); };
+// Enlace para añadir el partido a Google Calendar (hora de Madrid; si aún no tiene hora, evento de todo el día)
+const enCalendario = p => {
+  const d = new Date((p.fecha || '').replace(' ', 'T')); if (isNaN(d)) return '';
+  const f = x => x.getFullYear() + String(x.getMonth() + 1).padStart(2, '0') + String(x.getDate()).padStart(2, '0');
+  const h = x => 'T' + String(x.getHours()).padStart(2, '0') + String(x.getMinutes()).padStart(2, '0') + '00';
+  const conHora = d.getHours() || d.getMinutes();
+  const fin = new Date(d.getTime() + (conHora ? 90 * 60000 : 86400000));
+  const nombre = titleCase(TODO.equipo), rival = titleCase(p.rival);
+  const q = new URLSearchParams({ action: 'TEMPLATE',
+    text: '🏀 ' + (p.local ? `${nombre} - ${rival}` : `${rival} - ${nombre}`),
+    dates: conHora ? f(d) + h(d) + '/' + f(fin) + h(fin) : f(d) + '/' + f(fin),
+    ctz: 'Europe/Madrid',
+    location: titleCase([p.pabellon, p.localidad].filter(Boolean).join(', ')),
+    details: `Jornada ${p.jornada} · ${TODO.competicion}` + (conHora ? '' : '\nHora todavía sin confirmar.') });
+  return `<a class="gcal" target="_blank" rel="noopener" href="https://calendar.google.com/calendar/render?${q}">📅 Añadir</a>`;
+};
 document.getElementById('eCalendario').innerHTML = pendientes.length
-  ? `<tr><th>Jornada</th><th>Fecha</th><th style="text-align:left">Partido</th><th style="text-align:left">Rival</th><th style="text-align:left">Pabellón</th></tr>` +
+  ? `<tr><th>Jornada</th><th>Fecha</th><th style="text-align:left">Partido</th><th style="text-align:left">Rival</th><th style="text-align:left">Pabellón</th><th>Calendario</th></tr>` +
     pendientes.map(p => `<tr><td>J${p.jornada}</td><td>${fecha(p.fecha)}</td><td style="text-align:left">${p.local ? 'En casa' : 'Fuera'}</td>
-      <td style="text-align:left">${esc(titleCase(p.rival))}</td><td style="text-align:left">${esc(titleCase([p.pabellon, p.localidad].filter(Boolean).join(', ')))}</td></tr>`).join('')
+      <td style="text-align:left">${esc(titleCase(p.rival))}</td><td style="text-align:left">${esc(titleCase([p.pabellon, p.localidad].filter(Boolean).join(', ')))}</td><td>${enCalendario(p)}</td></tr>`).join('')
   : '<tr><td class="empty">No quedan partidos en esta fase.</td></tr>';
 
 document.getElementById('pie').textContent = 'Fuente: clasificación y actas digitales de la Federación de Baloncesto de Castilla y León (fbcyl.es).';
