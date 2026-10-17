@@ -66,6 +66,16 @@ jobs:
           path: web
       - id: despliegue
         uses: actions/deploy-pages@v4
+      - name: Comprobar que la página publicada es la nueva
+        # GitHub Pages puede dar el despliegue por bueno y seguir sirviendo la versión anterior
+        run: |
+          esperado=$(sha256sum web/index.html | cut -d' ' -f1)
+          for i in $(seq 12); do
+            [ "$(curl -s "${{ steps.despliegue.outputs.page_url }}?t=$(date +%s%N)" | sha256sum | cut -d' ' -f1)" = "$esperado" ] && exit 0
+            sleep 10
+          done
+          echo "::error::GitHub Pages sigue sirviendo la versión anterior de la página"
+          exit 1
       - name: Programar la actualización en directo si hoy hay partido
         if: github.event_name == 'schedule'
         env:
