@@ -1,7 +1,7 @@
 name: Partido en directo
 
 # Lo lanza cada madrugada "Actualizar y publicar". Si hoy hay partido, espera a que empiece
-# y durante 1 h 40 min lanza la publicación cada 30 segundos (ver directo.py).
+# y durante 1 h 40 min lanza la publicación cada 2 minutos (ver directo.py).
 on:
   workflow_dispatch:
 
