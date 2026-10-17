@@ -66,6 +66,10 @@ jobs:
           path: web
       - id: despliegue
         uses: actions/deploy-pages@v4
+        env:
+          # Versión única por ejecución: con el mismo commit, tras muchos despliegues seguidos
+          # (directo cada 30 s) GitHub Pages los da por buenos pero deja de aplicarlos
+          GITHUB_SHA: ${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
       - name: Comprobar que la página publicada es la nueva
         # GitHub Pages puede dar el despliegue por bueno y seguir sirviendo la versión anterior
         run: |
