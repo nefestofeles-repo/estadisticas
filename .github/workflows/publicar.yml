@@ -81,7 +81,6 @@ jobs:
           jq -n --argjson a "$ARTEFACTO" --arg v "$version" --arg o "$oidc" \
              '{artifact_id: $a, pages_build_version: $v, oidc_token: $o}' \
             | gh api -X POST "repos/$GITHUB_REPOSITORY/pages/deployments" --input - > despliegue.json
-          cat despliegue.json; echo
           estado_url=$(jq -r .status_url despliegue.json)
           for i in $(seq 60); do
             estado=$(gh api "$estado_url" -q .status)
