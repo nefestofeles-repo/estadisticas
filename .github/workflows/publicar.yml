@@ -12,7 +12,7 @@ on:
     - cron: "33 2 * * *"      # 3:33 en horario de invierno (UTC+1)
 
 permissions:
-  contents: read
+  contents: write             # para el commit suelto que identifica cada despliegue (no mueve ninguna rama)
   pages: write
   id-token: write
   actions: write              # para lanzar "Partido en directo"
@@ -73,7 +73,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           ARTEFACTO: ${{ steps.artefacto.outputs.artifact_id }}
         run: |
-          version=$(echo "$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" | sha1sum | cut -d' ' -f1)
+          # La versión tiene que ser un commit del repositorio: uno suelto con el mismo contenido
+          arbol=$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$GITHUB_SHA" -q .tree.sha)
+          version=$(gh api "repos/$GITHUB_REPOSITORY/git/commits" -f message="Publicación $GITHUB_RUN_ID" \
+                      -f tree="$arbol" -f "parents[]=$GITHUB_SHA" -q .sha)
           oidc=$(curl -sf -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL" | jq -r .value)
           jq -n --argjson a "$ARTEFACTO" --arg v "$version" --arg o "$oidc" \
              '{artifact_id: $a, pages_build_version: $v, oidc_token: $o}' \
