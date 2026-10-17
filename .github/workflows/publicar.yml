@@ -61,15 +61,33 @@ jobs:
         run: |
           python3 actualizar.py
           mkdir -p web && cp informe.html web/index.html
-      - uses: actions/upload-pages-artifact@v3
+      - id: artefacto
+        uses: actions/upload-pages-artifact@v3
         with:
           path: web
       - id: despliegue
-        uses: actions/deploy-pages@v4
+        # Lo mismo que actions/deploy-pages, pero con una versión única por ejecución: deploy-pages usa
+        # el commit como versión y, tras muchos despliegues del mismo commit (directo cada 30 s),
+        # GitHub Pages los da por buenos pero deja de aplicarlos
         env:
-          # Versión única por ejecución: con el mismo commit, tras muchos despliegues seguidos
-          # (directo cada 30 s) GitHub Pages los da por buenos pero deja de aplicarlos
-          GITHUB_SHA: ${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          GH_TOKEN: ${{ github.token }}
+          ARTEFACTO: ${{ steps.artefacto.outputs.artifact_id }}
+        run: |
+          version=$(echo "$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" | sha1sum | cut -d' ' -f1)
+          oidc=$(curl -sf -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL" | jq -r .value)
+          jq -n --argjson a "$ARTEFACTO" --arg v "$version" --arg o "$oidc" \
+             '{artifact_id: $a, pages_build_version: $v, oidc_token: $o}' \
+            | gh api -X POST "repos/$GITHUB_REPOSITORY/pages/deployments" --input - > /dev/null
+          for i in $(seq 60); do
+            estado=$(gh api "repos/$GITHUB_REPOSITORY/pages/deployments/$version" -q .status)
+            echo "Despliegue $version: $estado"
+            case "$estado" in
+              succeed) echo "page_url=$(gh api "repos/$GITHUB_REPOSITORY/pages" -q .html_url)" >> "$GITHUB_OUTPUT"; exit 0 ;;
+              deployment_failed|deployment_content_failed|deployment_cancelled|deployment_lost) exit 1 ;;
+            esac
+            sleep 5
+          done
+          exit 1
       - name: Comprobar que la página publicada es la nueva
         # GitHub Pages puede dar el despliegue por bueno y seguir sirviendo la versión anterior
         run: |
