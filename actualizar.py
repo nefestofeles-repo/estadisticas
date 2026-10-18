@@ -206,6 +206,9 @@ def partido(grupo, num, m):
         # El universallyid no aparece hasta que se cierra el acta; el idMatchCall está desde antes
         # del partido y la API de estadísticas lo acepta igual, también en directo
         "estadisticas": False, "uuidPartido": m.get("idMatchCall") or m.get("universallyid"),
+        # Página del partido en la web de la federación (carga el acta con cualquiera de los dos identificadores)
+        "fbcyl": f"https://www.fbcyl.es/estadisticas/partido/{m.get('season')}/{m.get('universallyid') or m.get('idMatchCall')}"
+                 if m.get("season") and (m.get("universallyid") or m.get("idMatchCall")) else None,
     }
     return p
 
@@ -306,6 +309,25 @@ def _clasificacion():
                      for s in datos_grupo(GRUPOS[-1])["standing"]]
 
 
+def evolucion(jugadas, duracion, local):
+    """Marcador tras cada canasta: [minuto de juego, nuestros puntos, puntos del rival]."""
+    def minuto(j):
+        periodo = j.get("period") or 1
+        previos = sum(duracion if k <= 4 else 5 for k in range(1, periodo))
+        return previos + (duracion if periodo <= 4 else 5) - (j.get("min") or 0) - (j.get("sec") or 0) / 60
+    # En el orden en que se apuntan en la mesa (el reloj de algunas jugadas sale desordenado); el minuto nunca retrocede
+    puntos, ultimo, t = [[0, 0, 0]], (0, 0), 0
+    for j in sorted(jugadas, key=lambda j: j.get("timestamp") or ""):
+        try:
+            l, v = (int(x) for x in (j.get("score") or "").split("-"))
+        except ValueError:
+            continue
+        if (l, v) != ultimo:
+            ultimo, t = (l, v), max(t, minuto(j))
+            puntos.append([round(t, 2), *((l, v) if local else (v, l))])
+    return puntos
+
+
 def partido_equipo(base, seguidas):
     """Estadísticas de equipo de un partido: tiros, cuartos y líneas de todas las jugadoras."""
     p = dict(base)
@@ -326,6 +348,11 @@ def partido_equipo(base, seguidas):
                            "defensa": defensa(jugadas, normaliza(j.get("name")), bool(j.get("starting")),
                                               nuestro["teamIdIntern"]) if jugadas else None}
                           for j in nuestro.get("players", [])],
+            "rivalJugadoras": [{"nombre": j.get("name"), "dorsal": j.get("dorsal"), "minutos": j.get("timePlayed") or 0,
+                                "puntos": j["data"].get("score", 0), **lanzamientos(j["data"])}
+                               for j in rival.get("players", [])
+                               if (j.get("timePlayed") or 0) > 0 or (j.get("gamePlayed") or 0) > 0],
+            "evolucion": evolucion(jugadas, st.get("periodDuration") or 10, p["local"]) if jugadas else [],
         })
     return p
 
@@ -431,7 +458,7 @@ def solo_partido_en_curso(clave):
         print("Ningún partido en juego ahora mismo.")
         return None
     claves = ("grupo", "jornada", "fecha", "local", "rival", "pabellon", "localidad",
-              "jugado", "puntosEquipo", "puntosRival", "uuidPartido")
+              "jugado", "puntosEquipo", "puntosRival", "uuidPartido", "fbcyl")
     base = en_directo({**{k: actual.get(k) for k in claves}, "estadisticas": False})
     print(f"Directo J{base['jornada']} vs {base['rival']}: {base['puntosEquipo']}-{base['puntosRival']}")
     mismo = lambda p: (p["grupo"], p["jornada"]) == (base["grupo"], base["jornada"])
