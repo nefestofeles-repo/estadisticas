@@ -203,7 +203,9 @@ def partido(grupo, num, m):
         "jugado": gf is not None and gc is not None,
         "puntosEquipo": int(gf) if gf is not None else None,
         "puntosRival": int(gc) if gc is not None else None,
-        "estadisticas": False, "uuidPartido": m.get("universallyid"),
+        # El universallyid no aparece hasta que se cierra el acta; el idMatchCall está desde antes
+        # del partido y la API de estadísticas lo acepta igual, también en directo
+        "estadisticas": False, "uuidPartido": m.get("idMatchCall") or m.get("universallyid"),
     }
     return p
 
