@@ -98,7 +98,12 @@ select { font: inherit; padding: 6px 8px; border-radius: 8px; border: 1px solid 
 a.gcal { display: inline-block; white-space: nowrap; padding: 3px 10px; border-radius: 999px; font-size: 13px; color: var(--s1); text-decoration: none; border: 1px solid color-mix(in srgb, var(--s1) 40%, transparent); }
 a.gcal:hover { background: color-mix(in srgb, var(--s1) 10%, transparent); }
 tr.nuestro td { font-weight: 600; background: color-mix(in srgb, var(--s1) 10%, transparent); }
-td .escudo { width: 20px; height: 20px; object-fit: contain; vertical-align: -5px; margin-right: 8px; }
+.duelo { display: flex; align-items: center; gap: 6px; flex: none; }
+.duelo img, .duelo span { width: 72px; height: 72px; border-radius: 50%; object-fit: contain; background: #fff;
+  box-shadow: 0 0 0 1px var(--ring); display: grid; place-items: center; font-weight: 600; color: #555; }
+.duelo b { color: var(--muted); font-size: 13px; font-weight: 600; }
+@media (max-width: 560px) { header.partido { flex-direction: column; align-items: flex-start; gap: 12px; } }
+th .escudo, td .escudo { width: 20px; height: 20px; object-fit: contain; vertical-align: -5px; margin-right: 8px; }
 th[data-orden] { cursor: pointer; user-select: none; }
 th[data-orden]:hover { color: var(--ink); }
 a.ver { color: var(--s1); text-decoration: none; font-weight: 600; }
@@ -786,12 +791,17 @@ const nuestra = E.clasificacion.find(c => c.id === E.id);
 const gana = p.puntosEquipo > p.puntosRival;
 
 // --- Cabecera: resultado, enlaces a la federación, al equipo y a los partidos de al lado ---
+// Escudos de los dos equipos, en el orden local – visitante
+const escudo = (logo, txt, cls = '') => logo ? `<img${cls} src="${esc(logo)}" alt="${esc(txt)}" loading="lazy" referrerpolicy="no-referrer">` : (cls ? '' : `<span>${esc(iniciales(txt))}</span>`);
+const logos = [escudo(nuestra?.logo, nombre), escudo(p.logoRival, rival)];
 const foto = document.getElementById('foto');
-if (nuestra?.logo) { foto.style.backgroundImage = `url("${nuestra.logo}")`; foto.style.backgroundSize = 'contain'; foto.style.backgroundColor = '#fff'; }
-else foto.textContent = iniciales(nombre);
+foto.className = 'duelo';
+foto.closest('header').classList.add('partido');
+foto.innerHTML = (p.local ? logos : logos.reverse()).join('<b>vs</b>');
+const escNuestro = escudo(nuestra?.logo, nombre, ' class="escudo"'), escRival = escudo(p.logoRival, rival, ' class="escudo"');
 const [izq, der] = p.local ? [nombre, rival] : [rival, nombre];
 const [pi, pd] = p.local ? [p.puntosEquipo, p.puntosRival] : [p.puntosRival, p.puntosEquipo];
-document.getElementById('titulo').textContent = p.jugado ? `${izq} ${pi}–${pd} ${der}` : `${izq} – ${der}`;
+document.getElementById('titulo').innerHTML = p.jugado ? `${esc(izq)} <span style="white-space:nowrap">${pi}–${pd}</span> ${esc(der)}` : `${esc(izq)} – ${esc(der)}`;
 document.title = `J${p.jornada} · ${izq} - ${der}`;
 document.getElementById('subtitulo').textContent = [`Jornada ${p.jornada}`, fechaCorta(p.fecha),
   titleCase([p.pabellon, p.localidad].filter(Boolean).join(', '))].filter(Boolean).join(' · ');
@@ -861,8 +871,8 @@ const cab = Array.from({ length: nq }, (_, k) => k < 4 ? `${k + 1}º C` : `Prór
 const celda = (a, b) => a == null ? '<td class="c">–</td>' : `<td class="c"><span class="${a > b ? 'v-win' : a < b ? 'v-loss' : ''}">${a}</span></td>`;
 document.getElementById('pCuartos').innerHTML =
   `<tr><th>Equipo</th><th></th>${cab.map(c => `<th style="text-align:center">${c}</th>`).join('')}<th>Total</th></tr>` +
-  `<tr class="nuestro"><td>${esc(nombre)}</td><td></td>${cab.map((_, k) => celda(p.cuartos[k], p.cuartosRival[k])).join('')}<td>${p.puntosEquipo}</td></tr>` +
-  `<tr><td>${esc(rival)}</td><td></td>${cab.map((_, k) => celda(p.cuartosRival[k], p.cuartos[k])).join('')}<td>${p.puntosRival}</td></tr>`;
+  `<tr class="nuestro"><td>${escNuestro}${esc(nombre)}</td><td></td>${cab.map((_, k) => celda(p.cuartos[k], p.cuartosRival[k])).join('')}<td>${p.puntosEquipo}</td></tr>` +
+  `<tr><td>${escRival}${esc(rival)}</td><td></td>${cab.map((_, k) => celda(p.cuartosRival[k], p.cuartos[k])).join('')}<td>${p.puntosRival}</td></tr>`;
 
 // --- Nuestras jugadoras ---
 const tiros = (j, t) => `${j[`t${t}a`]}/${j[`t${t}i`]}`;
@@ -880,7 +890,7 @@ document.getElementById('pJugadoras').innerHTML =
 
 // --- Equipo frente al rival ---
 document.getElementById('pVs').innerHTML =
-  `<tr><th></th><th style="text-align:right">${esc(nombre)}</th><th>${esc(rival)}</th></tr>` +
+  `<tr><th></th><th style="text-align:right">${escNuestro}${esc(nombre)}</th><th>${escRival}${esc(rival)}</th></tr>` +
   [['Puntos', p.puntosEquipo, p.puntosRival],
    ...[['Tiros de 2', 2], ['Triples', 3], ['Tiros libres', 1]].flatMap(([t, n]) => [
      [t, tiros(N, n), tiros(R, n)], [`% ${t.toLowerCase()}`, pctTxt(N[`t${n}a`], N[`t${n}i`]), pctTxt(R[`t${n}a`], R[`t${n}i`])]]),

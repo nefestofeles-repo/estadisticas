@@ -200,6 +200,7 @@ def partido(grupo, num, m):
         "grupo": grupo, "jornada": num, "fecha": m["matchDay"], "local": local,
         "rival": m["nameVisitorTeam"] if local else m["nameLocalTeam"],
         "pabellon": m["nameField"], "localidad": m["nameTown"],
+        "logoRival": m.get("logoVisitant") if local else m.get("logoLocal"),
         "jugado": gf is not None and gc is not None,
         "puntosEquipo": int(gf) if gf is not None else None,
         "puntosRival": int(gc) if gc is not None else None,
@@ -458,7 +459,7 @@ def solo_partido_en_curso(clave):
         print("Ningún partido en juego ahora mismo.")
         return None
     claves = ("grupo", "jornada", "fecha", "local", "rival", "pabellon", "localidad",
-              "jugado", "puntosEquipo", "puntosRival", "uuidPartido", "fbcyl")
+              "jugado", "puntosEquipo", "puntosRival", "uuidPartido", "fbcyl", "logoRival")
     base = en_directo({**{k: actual.get(k) for k in claves}, "estadisticas": False})
     print(f"Directo J{base['jornada']} vs {base['rival']}: {base['puntosEquipo']}-{base['puntosRival']}")
     mismo = lambda p: (p["grupo"], p["jornada"]) == (base["grupo"], base["jornada"])
