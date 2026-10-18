@@ -258,7 +258,7 @@ footer { margin-top: 32px; font-size: 12px; color: var(--muted); }
   <div class="card scroll"><table id="pCuartos"></table></div>
 
   <h2>Nuestras jugadoras</h2>
-  <div class="card scroll"><p class="sub" style="margin-top:0">En negrita, las jugadoras que sigue este panel. Tit.: titular.</p><table id="pJugadoras"></table></div>
+  <div class="card scroll"><p class="sub" style="margin-top:0">En negrita, las jugadoras que sigue este panel. Tit.: titular. Def.: puntos del rival por cada 40 minutos con ella en pista (cuanto más bajo, mejor). % TC rival: acierto del rival en tiros de campo con ella en pista. Miden la defensa de las cinco que están en pista; pasa el ratón por encima para ver el dato sin ella.</p><table id="pJugadoras"></table></div>
 
   <h2>Equipo frente al rival</h2>
   <div class="card scroll"><table id="pVs"></table></div>
@@ -878,15 +878,18 @@ document.getElementById('pCuartos').innerHTML =
 const tiros = (j, t) => `${j[`t${t}a`]}/${j[`t${t}i`]}`;
 const signo = v => (v > 0 ? '+' : '') + v;
 const filas = [...jugaron].sort((a, b) => b.titular - a.titular || b.minutos - a.minutos);
+const defCelda = d => d ? `<td data-tip="Sin ella: ${fmt(rating(d.ptsBanco, d.segBanco))}">${fmt(rating(d.ptsPista, d.segPista))}</td>` : '<td>–</td>';
+const tcCelda = d => d ? `<td data-tip="Sin ella: ${pctTxt(d.tcaBanco, d.tciBanco)} (${d.tcaBanco}/${d.tciBanco})">${pctTxt(d.tcaPista, d.tciPista)}</td>` : '<td>–</td>';
 const noJugaron = (p.jugadoras || []).filter(j => !j.jugo);
 document.getElementById('pJugadoras').innerHTML =
-  `<tr><th>#</th><th>Jugadora</th><th>Tit.</th><th>Min</th><th>Pts</th><th>T2</th><th>T3</th><th>TL</th><th>Faltas</th><th>+/−</th><th>Val.</th></tr>` +
+  `<tr><th>#</th><th>Jugadora</th><th>Tit.</th><th>Min</th><th>Pts</th><th>T2</th><th>T3</th><th>TL</th><th>Faltas</th><th>+/−</th><th>Val.</th><th>Def.</th><th>% TC rival</th></tr>` +
   filas.map(j => `<tr><td>${esc(j.dorsal ?? '')}</td><td>${j.seguida ? `<b>${esc(titleCase(j.nombre))}</b>` : esc(titleCase(j.nombre))}</td>
     <td>${j.titular ? '✓' : ''}</td><td>${j.minutos}</td><td><b>${j.puntos}</b></td><td>${tiros(j, 2)}</td><td>${tiros(j, 3)}</td><td>${tiros(j, 1)}</td>
-    <td>${j.faltas}</td><td>${signo(j.masMenos)}</td><td>${j.valoracion}</td></tr>`).join('') +
+    <td>${j.faltas}</td><td>${signo(j.masMenos)}</td><td>${j.valoracion}</td>${defCelda(j.defensa)}${tcCelda(j.defensa)}</tr>`).join('') +
   `<tr class="total"><td></td><td>Equipo</td><td></td><td></td><td>${p.puntosEquipo}</td><td>${tiros(N, 2)}</td><td>${tiros(N, 3)}</td><td>${tiros(N, 1)}</td>
-    <td>${N.faltas}</td><td></td><td>${filas.reduce((a, j) => a + (j.valoracion || 0), 0)}</td></tr>` +
-  (noJugaron.length ? `<tr><td></td><td colspan="10" style="color:var(--muted);white-space:normal">No jugaron: ${noJugaron.map(j => esc(titleCase(j.nombre))).join(', ')}</td></tr>` : '');
+    <td>${N.faltas}</td><td></td><td>${filas.reduce((a, j) => a + (j.valoracion || 0), 0)}</td>
+    <td>${fmt(p.puntosRival * 40 / (40 + 5 * Math.max(0, p.cuartos.length - 4)))}</td><td>${pctTxt(R.t2a + R.t3a, R.t2i + R.t3i)}</td></tr>` +
+  (noJugaron.length ? `<tr><td></td><td colspan="12" style="color:var(--muted);white-space:normal">No jugaron: ${noJugaron.map(j => esc(titleCase(j.nombre))).join(', ')}</td></tr>` : '');
 
 // --- Equipo frente al rival ---
 document.getElementById('pVs').innerHTML =
