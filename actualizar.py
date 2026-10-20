@@ -199,6 +199,7 @@ def partido(grupo, num, m):
     p = {
         "grupo": grupo, "jornada": num, "fecha": m["matchDay"], "local": local,
         "rival": m["nameVisitorTeam"] if local else m["nameLocalTeam"],
+        "idRival": m["idVisitorTeam"] if local else m["idLocalTeam"],
         "pabellon": m["nameField"], "localidad": m["nameTown"],
         "logoRival": m.get("logoVisitant") if local else m.get("logoLocal"),
         "jugado": gf is not None and gc is not None,
@@ -341,7 +342,7 @@ def partido_equipo(base, seguidas):
             "nosotras": lanzamientos(nuestro["data"]), "ellas": lanzamientos(rival["data"]),
             "cuartos": [q.get("score", 0) for q in nuestro.get("periods", [])],
             "cuartosRival": [q.get("score", 0) for q in rival.get("periods", [])],
-            "jugadoras": [{"nombre": j.get("name"), "dorsal": j.get("dorsal"), "titular": bool(j.get("starting")),
+            "jugadoras": [{"nombre": j.get("name"), "uuid": j.get("uuid"), "dorsal": j.get("dorsal"), "titular": bool(j.get("starting")),
                            "jugo": (j.get("timePlayed") or 0) > 0 or (j.get("gamePlayed") or 0) > 0,
                            "minutos": j.get("timePlayed") or 0, "puntos": j["data"].get("score", 0),
                            "valoracion": j["data"].get("valoration", 0), "masMenos": j.get("inOut", 0),
@@ -349,7 +350,7 @@ def partido_equipo(base, seguidas):
                            "defensa": defensa(jugadas, normaliza(j.get("name")), bool(j.get("starting")),
                                               nuestro["teamIdIntern"]) if jugadas else None}
                           for j in nuestro.get("players", [])],
-            "rivalJugadoras": [{"nombre": j.get("name"), "dorsal": j.get("dorsal"), "minutos": j.get("timePlayed") or 0,
+            "rivalJugadoras": [{"nombre": j.get("name"), "uuid": j.get("uuid"), "dorsal": j.get("dorsal"), "minutos": j.get("timePlayed") or 0,
                                 "puntos": j["data"].get("score", 0), **lanzamientos(j["data"])}
                                for j in rival.get("players", [])
                                if (j.get("timePlayed") or 0) > 0 or (j.get("gamePlayed") or 0) > 0],
@@ -437,10 +438,14 @@ def actualizacion_completa():
         uuid = next((p["uuid"] for p in partidos if p.get("uuid")), None)
         jugadoras.append({"nombre": jugadora, "foto": foto(uuid) if uuid else None, "partidos": partidos})
     seguidas = {normaliza(n) for n in JUGADORAS}
+    # Identificadores para enlazar a las páginas del equipo, el club y el grupo en la web de la federación
+    m = next((m for _, _, m in reversed(partidos_equipo) if m.get("season")), {})
+    club = m.get("idLocalClub") if str(m.get("idLocalTeam")) == str(EQUIPO_ID) else m.get("idVisitorClub")
     return {"equipo": "PONCE PUCELA BASKET B3",
             "competicion": "2ª División Cadete Femenino · Grupo C",
             "jugadoras": jugadoras,
-            "equipoDatos": {"id": EQUIPO_ID, "clasificacion": clasificacion(),
+            "equipoDatos": {"id": EQUIPO_ID, "club": club, "grupo": GRUPOS[-1], "temporada": m.get("season"),
+                            "clasificacion": clasificacion(),
                             "partidos": [partido_equipo(b, seguidas) for b in bases]}}
 
 
@@ -459,7 +464,7 @@ def solo_partido_en_curso(clave):
         print("Ningún partido en juego ahora mismo.")
         return None
     claves = ("grupo", "jornada", "fecha", "local", "rival", "pabellon", "localidad",
-              "jugado", "puntosEquipo", "puntosRival", "uuidPartido", "fbcyl", "logoRival")
+              "jugado", "puntosEquipo", "puntosRival", "uuidPartido", "fbcyl", "logoRival", "idRival")
     base = en_directo({**{k: actual.get(k) for k in claves}, "estadisticas": False})
     print(f"Directo J{base['jornada']} vs {base['rival']}: {base['puntosEquipo']}-{base['puntosRival']}")
     mismo = lambda p: (p["grupo"], p["jornada"]) == (base["grupo"], base["jornada"])

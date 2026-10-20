@@ -281,6 +281,25 @@ const pctTxt = (a, i) => i ? Math.round(100 * a / i) + '%' : '–';
 const fmt = (v, d = 1) => v == null || isNaN(v) ? '–' : (Math.round(v * 10 ** d) / 10 ** d).toLocaleString('es-ES');
 const titleCase = s => (s || '').toLowerCase().replace(/(^|\s)\S/g, c => c.toUpperCase());
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+// Páginas de la web de la federación (fbcyl.es): jugadora, equipo, club, grupo y partido
+const FBCYL = 'https://www.fbcyl.es';
+const fbcylEquipo = id => `${FBCYL}/equipo/${id}`;
+// La ficha de jugadora usa el uuid de federada que trae el acta y el equipo con el que juega
+const fbcylJugadora = (temporada, j, idEquipo) => temporada && j.uuid && idEquipo
+  ? `${FBCYL}/estadisticas/jugador/${temporada}/${j.uuid}/${encodeURIComponent(j.nombre)}/${idEquipo}` : null;
+const nombreConFicha = (html, url) => url ? `<a class="ver" href="${esc(url)}" target="_blank" rel="noopener" title="Ver su ficha en la FBCyL">${html}</a>` : html;
+const enlaceFbcyl = (href, txt) => `<a class="refresco" href="${esc(href)}" target="_blank" rel="noopener">${txt} ↗</a>`;
+function enlacesFbcyl(TODO, ficha) {
+  const E = TODO.equipoDatos;
+  if (!E) return '';
+  return '<div class="acciones">' + [
+    ficha && enlaceFbcyl(ficha, 'Su ficha en la FBCyL'),
+    enlaceFbcyl(fbcylEquipo(E.id), 'Equipo en la FBCyL'),
+    E.temporada && enlaceFbcyl(`${FBCYL}/estadisticas/equipo/3/${E.temporada}/${E.id}/${encodeURIComponent(TODO.equipo)}`, 'Estadísticas del equipo'),
+    E.grupo && enlaceFbcyl(`${FBCYL}/competiciones/resultados/${E.grupo}`, 'Resultados del grupo'),
+    E.club && enlaceFbcyl(`${FBCYL}/club/${E.club}`, 'Club'),
+  ].filter(Boolean).join('') + '</div>';
+}
 const etiqueta = p => 'J' + p.jornada;
 const enlacePartido = p => `#partido-${p.grupo}-${p.jornada}`;
 // Al pulsar una barra o un punto de una gráfica de partidos, abre su detalle
@@ -376,8 +395,9 @@ document.getElementById('titulo').textContent = nombre;
 const dorsal = conElla.find(p => p.dorsal)?.dorsal;
 document.getElementById('subtitulo').textContent =
   `${dorsal ? '#' + dorsal + ' · ' : ''}${titleCase(DATOS.equipo)} · ${DATOS.competicion}`;
-document.getElementById('meta').textContent =
-  `Actualizado ${DATOS.actualizado} · ${conElla.length} de ${jugados.length} partidos jugados con estadísticas`;
+document.getElementById('meta').innerHTML =
+  esc(`Actualizado ${DATOS.actualizado} · ${conElla.length} de ${jugados.length} partidos jugados con estadísticas`) +
+  enlacesFbcyl(TODO, fbcylJugadora(TODO.equipoDatos?.temporada, { nombre: DATOS.jugadora, uuid: conElla.find(p => p.uuid)?.uuid }, TODO.equipoDatos?.id));
 
 // --- Resumen ---
 const suma = f => conElla.reduce((a, p) => a + (f(p) || 0), 0);
@@ -616,7 +636,7 @@ if (nuestra?.logo) { foto.style.backgroundImage = `url("${nuestra.logo}")`; foto
 else foto.textContent = iniciales(titleCase(TODO.equipo));
 document.getElementById('titulo').textContent = titleCase(TODO.equipo);
 document.getElementById('subtitulo').textContent = TODO.competicion;
-document.getElementById('meta').textContent = `Actualizado ${TODO.actualizado} · ${jugados.length} partido${jugados.length === 1 ? '' : 's'} jugado${jugados.length === 1 ? '' : 's'}, ${conActa.length} con acta digital`;
+document.getElementById('meta').innerHTML = esc(`Actualizado ${TODO.actualizado} · ${jugados.length} partido${jugados.length === 1 ? '' : 's'} jugado${jugados.length === 1 ? '' : 's'}, ${conActa.length} con acta digital`) + enlacesFbcyl(TODO);
 
 // --- Resumen ---
 const n = jugados.length, v = jugados.filter(gana).length;
@@ -638,7 +658,7 @@ const racha = r => r > 0 ? `<span class="v-win">${r}V</span>` : r < 0 ? `<span c
 document.getElementById('eClasSub').textContent = 'Victoria 2 puntos, derrota 1. Racha: victorias (V) o derrotas (D) seguidas.';
 document.getElementById('eClas').innerHTML = `<tr><th>Pos.</th><th>Equipo</th><th>PJ</th><th>G</th><th>P</th><th>PF</th><th>PC</th><th>Dif.</th><th>Pts</th><th>Racha</th></tr>` +
   E.clasificacion.map(c => `<tr${c.id === E.id ? ' class="nuestro"' : ''}><td>${c.posicion}</td>
-    <td>${c.logo ? `<img class="escudo" src="${esc(c.logo)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ''}${esc(titleCase(c.equipo))}</td>
+    <td>${c.logo ? `<img class="escudo" src="${esc(c.logo)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ''}<a class="ver" href="${fbcylEquipo(c.id)}" target="_blank" rel="noopener" title="Ver el equipo en la FBCyL">${esc(titleCase(c.equipo))}</a></td>
     <td>${c.pj}</td><td>${c.g}</td><td>${c.p}</td><td>${c.pf}</td><td>${c.pc}</td><td>${c.pf - c.pc > 0 ? '+' : ''}${c.pf - c.pc}</td><td><b>${c.puntos}</b></td><td>${racha(c.racha)}</td></tr>`).join('');
 
 // --- Gráficas ---
@@ -714,16 +734,16 @@ document.getElementById('eVs').innerHTML = conActa.length
 const porJugadora = new Map();
 for (const p of conActa) for (const j of p.jugadoras) {
   if (!j.jugo) continue;
-  const a = porJugadora.get(j.nombre) || { nombre: j.nombre, dorsal: j.dorsal, seguida: j.seguida, pj: 0, tit: 0,
+  const a = porJugadora.get(j.nombre) || { nombre: j.nombre, uuid: j.uuid, dorsal: j.dorsal, seguida: j.seguida, pj: 0, tit: 0,
     minutos: 0, puntos: 0, t1a: 0, t1i: 0, t2a: 0, t2i: 0, t3a: 0, t3i: 0, faltas: 0, masMenos: 0, valoracion: 0, defensas: [] };
-  a.pj++; a.tit += j.titular ? 1 : 0; a.dorsal = j.dorsal || a.dorsal;
+  a.pj++; a.tit += j.titular ? 1 : 0; a.dorsal = j.dorsal || a.dorsal; a.uuid = j.uuid || a.uuid;
   a.defensas.push(j.defensa);
   for (const k of ['minutos', 'puntos', 't1a', 't1i', 't2a', 't2i', 't3a', 't3i', 'faltas', 'masMenos', 'valoracion']) a[k] += j[k] || 0;
   porJugadora.set(j.nombre, a);
 }
 const colsJ = [
   ['#', j => j.dorsal ?? '', j => +j.dorsal || 0],
-  ['Jugadora', j => j.seguida ? `<b>${esc(titleCase(j.nombre))}</b>` : esc(titleCase(j.nombre)), j => j.nombre],
+  ['Jugadora', j => nombreConFicha(j.seguida ? `<b>${esc(titleCase(j.nombre))}</b>` : esc(titleCase(j.nombre)), fbcylJugadora(E.temporada, j, E.id)), j => j.nombre],
   ['PJ', j => j.pj, j => j.pj], ['Tit.', j => j.tit, j => j.tit],
   ['Min/p', j => fmt(j.minutos / j.pj), j => j.minutos / j.pj],
   ['Pts', j => j.puntos, j => j.puntos], ['Pts/p', j => fmt(j.puntos / j.pj), j => j.puntos / j.pj],
@@ -811,7 +831,7 @@ document.getElementById('meta').innerHTML = esc(`Actualizado ${TODO.actualizado}
     (p.enJuego ? ' · En juego' : p.jugado ? (gana ? ' · Victoria' : ' · Derrota') : ' · Pendiente')) +
   `<div class="acciones"><a class="refresco" href="#equipo">← Equipo</a>
     ${vecino(lista[k - 1], `← J${lista[k - 1]?.jornada}`)}${vecino(lista[k + 1]?.jugado && lista[k + 1], `J${lista[k + 1]?.jornada} →`)}
-    ${p.fbcyl ? `<a class="refresco" href="${esc(p.fbcyl)}" target="_blank" rel="noopener">Ver en la FBCyL ↗</a>` : ''}</div>`;
+    ${p.fbcyl ? enlaceFbcyl(p.fbcyl, 'Ver en la FBCyL') : ''}${p.idRival ? enlaceFbcyl(fbcylEquipo(p.idRival), `${esc(rival)} en la FBCyL`) : ''}</div>`;
 
 const sinActa = document.getElementById('pSinActa');
 if (!p.jugado || !p.estadisticas) {
@@ -883,7 +903,7 @@ const tcCelda = d => d ? `<td data-tip="Sin ella: ${pctTxt(d.tcaBanco, d.tciBanc
 const noJugaron = (p.jugadoras || []).filter(j => !j.jugo);
 document.getElementById('pJugadoras').innerHTML =
   `<tr><th>#</th><th>Jugadora</th><th>Tit.</th><th>Min</th><th>Pts</th><th>T2</th><th>T3</th><th>TL</th><th>Faltas</th><th>+/−</th><th>Val.</th><th>Def.</th><th>% TC rival</th></tr>` +
-  filas.map(j => `<tr><td>${esc(j.dorsal ?? '')}</td><td>${j.seguida ? `<b>${esc(titleCase(j.nombre))}</b>` : esc(titleCase(j.nombre))}</td>
+  filas.map(j => `<tr><td>${esc(j.dorsal ?? '')}</td><td>${nombreConFicha(j.seguida ? `<b>${esc(titleCase(j.nombre))}</b>` : esc(titleCase(j.nombre)), fbcylJugadora(E.temporada, j, E.id))}</td>
     <td>${j.titular ? '✓' : ''}</td><td>${j.minutos}</td><td><b>${j.puntos}</b></td><td>${tiros(j, 2)}</td><td>${tiros(j, 3)}</td><td>${tiros(j, 1)}</td>
     <td>${j.faltas}</td><td>${signo(j.masMenos)}</td><td>${j.valoracion}</td>${defCelda(j.defensa)}${tcCelda(j.defensa)}</tr>`).join('') +
   `<tr class="total"><td></td><td>Equipo</td><td></td><td></td><td>${p.puntosEquipo}</td><td>${tiros(N, 2)}</td><td>${tiros(N, 3)}</td><td>${tiros(N, 1)}</td>
@@ -904,7 +924,7 @@ document.getElementById('pVs').innerHTML =
 const rivales = [...(p.rivalJugadoras || [])].sort((a, b) => b.puntos - a.puntos || b.minutos - a.minutos);
 document.getElementById('pRival').innerHTML = rivales.length
   ? `<tr><th>#</th><th>Jugadora</th><th>Min</th><th>Pts</th><th>T2</th><th>T3</th><th>TL</th><th>Faltas</th></tr>` +
-    rivales.map(j => `<tr><td>${esc(j.dorsal ?? '')}</td><td>${esc(titleCase(j.nombre))}</td><td>${j.minutos}</td><td><b>${j.puntos}</b></td>
+    rivales.map(j => `<tr><td>${esc(j.dorsal ?? '')}</td><td>${nombreConFicha(esc(titleCase(j.nombre)), fbcylJugadora(E.temporada, j, p.idRival))}</td><td>${j.minutos}</td><td><b>${j.puntos}</b></td>
       <td>${tiros(j, 2)}</td><td>${tiros(j, 3)}</td><td>${tiros(j, 1)}</td><td>${j.faltas}</td></tr>`).join('')
   : '<tr><td class="empty">El acta no trae las jugadoras del rival.</td></tr>';
 
