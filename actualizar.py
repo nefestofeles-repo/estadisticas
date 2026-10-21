@@ -12,6 +12,7 @@ import json
 import os
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 import unicodedata
 import urllib.request
 from datetime import datetime, timedelta
@@ -28,6 +29,7 @@ JUGADORAS = [n.strip() for n in (os.environ.get("JUGADORAS")
              or (Path(__file__).resolve().parent / "jugadoras.txt").read_text(encoding="utf-8")).replace(";", "\n").splitlines() if n.strip()]
 EQUIPO_ID = 40103                     # PONCE PUCELA BASKET B3
 GRUPOS = [7438]                       # 2ª Div. Cadete Fem. - Grupo C (añadir fases siguientes aquí)
+CATEGORIA = 1135                      # 2ªDIV.- CAD. FEM. AUT.: la comparación con la liga usa todos sus grupos
 TEMPORADA_ACTUAL = True
 DURACION = timedelta(hours=1, minutes=40)   # duración estimada de un partido (modo directo)
 # -----------------------------------------------------------------------------
@@ -311,6 +313,71 @@ def _clasificacion():
                      for s in datos_grupo(GRUPOS[-1])["standing"]]
 
 
+def grupos_categoria():
+    """Grupos de la categoría en la temporada actual (de todas las fases), según el buscador de fbcyl.es."""
+    try:
+        req = urllib.request.Request(f"https://www.fbcyl.es/ajax/combo_competicions2/{CATEGORIA}/F/1",
+                                     headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            html = r.read().decode("utf-8", "replace")
+        grupos = [(int(v), n.strip()) for v, n in re.findall(r'<option value="(\d+)">([^<]+)', html) if v != "0"]
+        if grupos:
+            return grupos
+    except Exception as e:
+        print(f"No se pudo leer la lista de grupos ({e}); solo los de GRUPOS")
+    return [(g, f"Grupo {g}") for g in GRUPOS]
+
+
+def liga():
+    """Totales de la temporada de todas las jugadoras de la categoría, sumando las actas de todos sus grupos."""
+    partidos = []
+    grupos = []
+    for id_grupo, nombre in grupos_categoria():
+        try:
+            d = datos_grupo(id_grupo)
+        except Exception as e:
+            print(f"  grupo {id_grupo}: sin datos ({e})")
+            continue
+        # "1ª FASE - LIGA REGULAR 2ªDIV CAD FEM-GRUPO A" -> "Grupo A"
+        corto = (d.get("group") or {}).get("nameGroup") or nombre.rsplit("-", 1)[-1]
+        grupos.append({"id": id_grupo, "nombre": corto.strip().title()})
+        for ronda in d["rounds"].values():
+            for m in ronda["matches"].values():
+                ident = m.get("universallyid") or m.get("idMatchCall")
+                if ident and m.get("localScore") is not None:
+                    partidos.append((grupos[-1]["nombre"], ident))
+
+    def acta(p):
+        try:
+            return p[0], get(f"{STATS}/getJsonWithMatchStats/{p[1]}?currentSeason={str(TEMPORADA_ACTUAL).lower()}")
+        except Exception:
+            return p[0], None
+
+    jugadoras = {}
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        actas = list(ex.map(acta, partidos))
+    for grupo, st in actas:
+        for t in (st or {}).get("teams") or []:
+            for j in t.get("players") or []:
+                if not ((j.get("timePlayed") or 0) > 0 or (j.get("gamePlayed") or 0) > 0):
+                    continue
+                d = j.get("data") or {}
+                a = jugadoras.setdefault(j.get("uuid") or normaliza(j.get("name")), {
+                    "nombre": j.get("name"), "uuid": j.get("uuid"), "equipo": t.get("name"), "idEquipo": t.get("teamIdExtern"),
+                    "grupo": grupo, "pj": 0, "min": 0, "pts": 0, "val": 0, "mm": 0,
+                    "t1a": 0, "t1i": 0, "t2a": 0, "t2i": 0, "t3a": 0, "t3i": 0, "faltas": 0})
+                a["pj"] += 1
+                a["min"] += j.get("timePlayed") or 0
+                a["pts"] += d.get("score", 0)
+                a["val"] += d.get("valoration", 0)
+                a["mm"] += j.get("inOut", 0)
+                for k, v in lanzamientos(d).items():
+                    a[k] += v
+    con_acta = sum(1 for _, st in actas if st and st.get("teams"))
+    print(f"Liga: {len(grupos)} grupos, {con_acta} actas, {len(jugadoras)} jugadoras")
+    return {"grupos": grupos, "actas": con_acta, "jugadoras": list(jugadoras.values())}
+
+
 def evolucion(jugadas, duracion, local):
     """Marcador tras cada canasta: [minuto de juego, nuestros puntos, puntos del rival]."""
     def minuto(j):
@@ -444,6 +511,7 @@ def actualizacion_completa():
     return {"equipo": "PONCE PUCELA BASKET B3",
             "competicion": "2ª División Cadete Femenino · Grupo C",
             "jugadoras": jugadoras,
+            "liga": liga(),
             "equipoDatos": {"id": EQUIPO_ID, "club": club, "grupo": GRUPOS[-1], "temporada": m.get("season"),
                             "clasificacion": clasificacion(),
                             "partidos": [partido_equipo(b, seguidas) for b in bases]}}

@@ -97,6 +97,18 @@ select { font: inherit; padding: 6px 8px; border-radius: 8px; border: 1px solid 
 .tabs a.equipo { padding-left: 14px; }
 a.gcal { display: inline-block; white-space: nowrap; padding: 3px 10px; border-radius: 999px; font-size: 13px; color: var(--s1); text-decoration: none; border: 1px solid color-mix(in srgb, var(--s1) 40%, transparent); }
 a.gcal:hover { background: color-mix(in srgb, var(--s1) 10%, transparent); }
+.lg-row { display: grid; grid-template-columns: 170px 56px minmax(0, 1fr) 96px; gap: 12px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--grid); font-size: 13px; }
+.lg-row:last-child { border-bottom: 0; }
+.lg-row .val { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+.lg-row .pos { text-align: right; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.lg-row .pista { position: relative; height: 8px; border-radius: 4px; background: var(--grid); }
+.lg-row .pista i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; background: var(--s1); }
+.lg-row .pista b { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--ink-2); border-radius: 1px; }
+@media (max-width: 560px) {
+  .lg-row { grid-template-columns: minmax(0, 1fr) auto; row-gap: 6px; }
+  .lg-row .pista { grid-column: 1; }
+}
+tr.sep td { color: var(--muted); text-align: center; border-bottom: 0; }
 tr.nuestro td { font-weight: 600; background: color-mix(in srgb, var(--s1) 10%, transparent); }
 .duelo { display: flex; align-items: center; gap: 6px; flex: none; }
 .duelo img, .duelo span { width: 72px; height: 72px; border-radius: 50%; object-fit: contain; background: #fff;
@@ -151,6 +163,11 @@ footer { margin-top: 32px; font-size: 12px; color: var(--muted); }
   <section id="vJugadora" hidden>
   <h2>Resumen de la temporada</h2>
   <div class="tiles" id="tiles"></div>
+
+  <section id="ligaBloque" hidden>
+  <h2>Comparación con la liga</h2>
+  <div class="card"><p class="sub" id="ligaSub" style="margin-top:0"></p><div class="legend"><span><i style="background:var(--s1)"></i>Percentil: a cuántas jugadoras supera</span><span><i class="line" style="background:var(--ink-2)"></i>Media de la liga</span></div><div id="liga"></div></div>
+  </section>
 
   <h2>Anotación y juego</h2>
   <div class="grid">
@@ -241,6 +258,12 @@ footer { margin-top: 32px; font-size: 12px; color: var(--muted); }
   <h2>Jugadoras</h2>
   <div class="card scroll"><p class="sub" style="margin-top:0">Totales de la temporada. Pulsa una columna para ordenar. Def.: puntos del rival por cada 40 minutos con ella en pista (cuanto más bajo, mejor).</p><table id="ePlantilla"></table></div>
 
+  <section id="eLigaBloque" hidden>
+  <h2>Líderes de la liga</h2>
+  <div class="card scroll"><p class="sub" style="margin-top:0" id="eLigaSub"></p>
+    <p><select id="eLigaMetrica" aria-label="Estadística"></select></p><table id="eLiga"></table></div>
+  </section>
+
   <h2>Próximos partidos</h2>
   <div class="card scroll"><table id="eCalendario"></table></div>
   </section>
@@ -288,6 +311,28 @@ const fbcylEquipo = id => `${FBCYL}/equipo/${id}`;
 const fbcylJugadora = (temporada, j, idEquipo) => temporada && j.uuid && idEquipo
   ? `${FBCYL}/estadisticas/jugador/${temporada}/${j.uuid}/${encodeURIComponent(j.nombre)}/${idEquipo}` : null;
 const nombreConFicha = (html, url) => url ? `<a class="ver" href="${esc(url)}" target="_blank" rel="noopener" title="Ver su ficha en la FBCyL">${html}</a>` : html;
+// Comparación con la liga: totales de todas las jugadoras de los grupos de la categoría (TODO.liga)
+// Para entrar en cada ranking hay que haber jugado la mitad de partidos que la que más, y en los % un mínimo de intentos
+const METRICAS_LIGA = [
+  { t: 'Puntos por partido', f: j => j.pts / j.pj },
+  { t: 'Minutos por partido', f: j => j.min / j.pj },
+  { t: 'Valoración por partido', f: j => j.val / j.pj },
+  { t: 'Puntos cada 10 minutos', f: j => j.min ? 10 * j.pts / j.min : null, vale: (j, m) => j.min >= 10 * m },
+  { t: '+/− por partido', f: j => j.mm / j.pj, signo: true },
+  { t: '% tiros libres', f: j => j.t1i ? 100 * j.t1a / j.t1i : null, pct: true, int: 't1i', vale: (j, m) => j.t1i >= 2 * m },
+  { t: '% tiros de 2', f: j => j.t2i ? 100 * j.t2a / j.t2i : null, pct: true, int: 't2i', vale: (j, m) => j.t2i >= 3 * m },
+  { t: '% triples', f: j => j.t3i ? 100 * j.t3a / j.t3i : null, pct: true, int: 't3i', vale: (j, m) => j.t3i >= m },
+];
+const minPartidosLiga = L => Math.max(1, Math.ceil(Math.max(0, ...L.jugadoras.map(j => j.pj)) / 2));
+function rankingLiga(L, m) {
+  const minPj = minPartidosLiga(L);
+  const lista = L.jugadoras.filter(j => j.pj >= minPj && (!m.vale || m.vale(j, minPj)) && m.f(j) != null)
+    .map(j => ({ j, v: m.f(j) })).sort((a, b) => b.v - a.v);
+  return { lista, minPj, puesto: v => 1 + lista.filter(x => x.v > v).length,
+           media: lista.length ? lista.reduce((a, x) => a + x.v, 0) / lista.length : null };
+}
+const valorLiga = (m, v) => v == null ? '–' : m.pct ? Math.round(v) + '%' : (m.signo && v > 0 ? '+' : '') + fmt(v);
+const enLiga = (L, j) => L.jugadoras.find(x => j.uuid ? x.uuid === j.uuid : x.nombre === j.nombre);
 const enlaceFbcyl = (href, txt) => `<a class="refresco" href="${esc(href)}" target="_blank" rel="noopener">${txt} ↗</a>`;
 function enlacesFbcyl(TODO, ficha) {
   const E = TODO.equipoDatos;
@@ -424,6 +469,28 @@ if (def.segPista) tiles.push(
 const susSaltos = jugados.map(p => p.saltoInicial).filter(x => x && x.esElla);
 if (susSaltos.length) tiles.push(['Saltos iniciales', `${susSaltos.filter(x => x.ganado).length}/${susSaltos.length}`, 'ganados de los que saltó']);
 pintarTiles('tiles', tiles);
+
+// --- Comparación con la liga ---
+const L = TODO.liga, yo = L && enLiga(L, { nombre: DATOS.jugadora, uuid: conElla.find(p => p.uuid)?.uuid });
+if (yo) {
+  document.getElementById('ligaBloque').hidden = false;
+  const minPj = minPartidosLiga(L);
+  document.getElementById('ligaSub').textContent = `Frente a las ${L.jugadoras.length} jugadoras de ${L.grupos.map(g => g.nombre).join(', ').replace(/, ([^,]*)$/, ' y $1')} ` +
+    `de 2ª División Cadete Femenino (${L.actas} partidos con acta). Para entrar en cada ranking hay que haber jugado al menos ${minPj} partido${minPj === 1 ? '' : 's'}; ` +
+    'en los porcentajes, además, un mínimo de intentos. Pasa el ratón por encima para ver la mejor de la liga.';
+  document.getElementById('liga').innerHTML = METRICAS_LIGA.filter(m => !m.int || yo[m.int]).map(m => {
+    const r = rankingLiga(L, m), v = m.f(yo), dentro = r.lista.some(x => x.j === yo);
+    const pos = r.puesto(v), n = r.lista.length, mejor = r.lista[0];
+    const pctl = dentro ? (n > 1 ? (n - pos) / (n - 1) : 1) : null;
+    // Posición de la media en la misma escala de percentil (proporción de jugadoras por debajo de la media)
+    const pMedia = n > 1 ? r.lista.filter(x => x.v < r.media).length / (n - 1) : null;
+    const tip = (dentro ? `Supera al ${Math.round(100 * pctl)}% de las jugadoras con puesto. ` : 'Todavía no tiene suficientes partidos o intentos para entrar en el ranking. ') +
+      `Media de la liga: ${valorLiga(m, r.media)}.` + (mejor ? ` Mejor: ${valorLiga(m, mejor.v)} (${titleCase(mejor.j.nombre)}, ${titleCase(mejor.j.equipo)}).` : '');
+    return `<div class="lg-row" data-tip="${esc(tip)}"><span>${m.t}</span><span class="val">${valorLiga(m, v)}</span>
+      <span class="pista">${dentro ? `<i style="width:${(100 * pctl).toFixed(1)}%"></i>` : ''}${pMedia != null ? `<b style="left:${(100 * pMedia).toFixed(1)}%"></b>` : ''}</span>
+      <span class="pos">${dentro ? `<b>${pos}ª</b> de ${n}` : 'sin puesto'}</span></div>`;
+  }).join('');
+}
 
 // --- Gráficas ---
 let charts = [];
@@ -772,6 +839,32 @@ document.getElementById('ePlantilla').addEventListener('click', e => {
   pintarPlantilla();
 });
 pintarPlantilla();
+
+// --- Líderes de la liga: las 10 primeras y, debajo, las jugadoras que sigue el panel ---
+const L = TODO.liga;
+if (L && L.jugadoras.length) {
+  document.getElementById('eLigaBloque').hidden = false;
+  const sel = document.getElementById('eLigaMetrica');
+  sel.innerHTML = METRICAS_LIGA.map((m, k) => `<option value="${k}">${m.t}</option>`).join('');
+  const seguidas = TODO.jugadoras.map(j => enLiga(L, { nombre: j.nombre, uuid: j.partidos.find(p => p.uuid)?.uuid })).filter(Boolean);
+  const pintarLiga = () => {
+    const m = METRICAS_LIGA[+sel.value], r = rankingLiga(L, m);
+    document.getElementById('eLigaSub').textContent = `${r.lista.length} jugadoras con puesto de las ${L.jugadoras.length} de ${L.grupos.length} grupos ` +
+      `(${L.actas} partidos con acta; mínimo ${r.minPj} partido${r.minPj === 1 ? '' : 's'} jugado${r.minPj === 1 ? '' : 's'}${m.int ? ' y un mínimo de intentos' : ''}). ` +
+      `Media de la liga: ${valorLiga(m, r.media)}. En azul, las de nuestro equipo.`;
+    const fila = (x, pos) => `<tr${x.j.idEquipo === E.id ? ' class="nuestro"' : ''}><td>${pos ?? '–'}</td>
+      <td>${nombreConFicha(esc(titleCase(x.j.nombre)), fbcylJugadora(E.temporada, x.j, x.j.idEquipo))}</td>
+      <td style="text-align:left">${esc(titleCase(x.j.equipo))}</td><td style="text-align:left">${esc(x.j.grupo)}</td><td>${x.j.pj}</td><td><b>${valorLiga(m, x.v)}</b></td></tr>`;
+    const top = r.lista.slice(0, 10);
+    const resto = seguidas.filter(j => !top.some(x => x.j === j)).map(j => ({ j, v: m.f(j) }))
+      .filter(x => x.v != null).sort((a, b) => b.v - a.v);
+    document.getElementById('eLiga').innerHTML = `<tr><th>Pos.</th><th>Jugadora</th><th style="text-align:left">Equipo</th><th style="text-align:left">Grupo</th><th>PJ</th><th>${m.t}</th></tr>` +
+      top.map((x, k) => fila(x, r.puesto(x.v))).join('') +
+      (resto.length ? '<tr class="sep"><td colspan="6">…</td></tr>' + resto.map(x => fila(x, r.lista.some(y => y.j === x.j) ? r.puesto(x.v) : null)).join('') : '');
+  };
+  sel.addEventListener('change', pintarLiga);
+  pintarLiga();
+}
 
 // --- Próximos partidos ---
 const pendientes = E.partidos.filter(p => !p.jugado);
