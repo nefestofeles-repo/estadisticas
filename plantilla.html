@@ -315,6 +315,8 @@ const nombreConFicha = (html, url) => url ? `<a class="ver" href="${esc(url)}" t
 // Para entrar en cada ranking hay que haber jugado la mitad de partidos que la que más, y en los % un mínimo de intentos
 const METRICAS_LIGA = [
   { t: 'Puntos por partido', f: j => j.pts / j.pj },
+  // Los totales cuentan a todas las jugadoras (sin mínimo de partidos) y solo salen en "Líderes de la liga"
+  { t: 'Puntos totales', f: j => j.pts, total: true },
   { t: 'Minutos por partido', f: j => j.min / j.pj },
   { t: 'Valoración por partido', f: j => j.val / j.pj },
   { t: 'Puntos cada 10 minutos', f: j => j.min ? 10 * j.pts / j.min : null, vale: (j, m) => j.min >= 10 * m },
@@ -325,7 +327,7 @@ const METRICAS_LIGA = [
 ];
 const minPartidosLiga = L => Math.max(1, Math.ceil(Math.max(0, ...L.jugadoras.map(j => j.pj)) / 2));
 function rankingLiga(L, m) {
-  const minPj = minPartidosLiga(L);
+  const minPj = m.total ? 1 : minPartidosLiga(L);
   const lista = L.jugadoras.filter(j => j.pj >= minPj && (!m.vale || m.vale(j, minPj)) && m.f(j) != null)
     .map(j => ({ j, v: m.f(j) })).sort((a, b) => b.v - a.v);
   return { lista, minPj, puesto: v => 1 + lista.filter(x => x.v > v).length,
@@ -478,7 +480,7 @@ if (yo) {
   document.getElementById('ligaSub').textContent = `Frente a las ${L.jugadoras.length} jugadoras de ${L.grupos.map(g => g.nombre).join(', ').replace(/, ([^,]*)$/, ' y $1')} ` +
     `de 2ª División Cadete Femenino (${L.actas} partidos con acta). Para entrar en cada ranking hay que haber jugado al menos ${minPj} partido${minPj === 1 ? '' : 's'}; ` +
     'en los porcentajes, además, un mínimo de intentos. Pasa el ratón por encima para ver la mejor de la liga.';
-  document.getElementById('liga').innerHTML = METRICAS_LIGA.filter(m => !m.int || yo[m.int]).map(m => {
+  document.getElementById('liga').innerHTML = METRICAS_LIGA.filter(m => !m.total && (!m.int || yo[m.int])).map(m => {
     const r = rankingLiga(L, m), v = m.f(yo), dentro = r.lista.some(x => x.j === yo);
     const pos = r.puesto(v), n = r.lista.length, mejor = r.lista[0];
     const pctl = dentro ? (n > 1 ? (n - pos) / (n - 1) : 1) : null;
@@ -850,7 +852,7 @@ if (L && L.jugadoras.length) {
   const pintarLiga = () => {
     const m = METRICAS_LIGA[+sel.value], r = rankingLiga(L, m);
     document.getElementById('eLigaSub').textContent = `${r.lista.length} jugadoras con puesto de las ${L.jugadoras.length} de ${L.grupos.length} grupos ` +
-      `(${L.actas} partidos con acta; mínimo ${r.minPj} partido${r.minPj === 1 ? '' : 's'} jugado${r.minPj === 1 ? '' : 's'}${m.int ? ' y un mínimo de intentos' : ''}). ` +
+      `(${L.actas} partidos con acta${m.total ? '' : `; mínimo ${r.minPj} partido${r.minPj === 1 ? '' : 's'} jugado${r.minPj === 1 ? '' : 's'}${m.int ? ' y un mínimo de intentos' : ''}`}). ` +
       `Media de la liga: ${valorLiga(m, r.media)}. En azul, las de nuestro equipo.`;
     const fila = (x, pos) => `<tr${x.j.idEquipo === E.id ? ' class="nuestro"' : ''}><td>${pos ?? '–'}</td>
       <td>${nombreConFicha(esc(titleCase(x.j.nombre)), fbcylJugadora(E.temporada, x.j, x.j.idEquipo))}</td>
