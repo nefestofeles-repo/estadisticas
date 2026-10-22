@@ -329,9 +329,11 @@ def grupos_categoria():
 
 
 def liga():
-    """Totales de la temporada de todas las jugadoras de la categoría, sumando las actas de todos sus grupos."""
+    """Totales de la temporada de todas las jugadoras y equipos de la categoría, sumando las actas de todos sus grupos,
+    y los resultados de cada grupo (para el informe del rival)."""
     partidos = []
     grupos = []
+    resultados = []
     for id_grupo, nombre in grupos_categoria():
         try:
             d = datos_grupo(id_grupo)
@@ -343,8 +345,13 @@ def liga():
         grupos.append({"id": id_grupo, "nombre": corto.strip().title()})
         for ronda in d["rounds"].values():
             for m in ronda["matches"].values():
+                if m.get("localScore") is None or m.get("visitorScore") is None:
+                    continue
+                resultados.append({"grupo": grupos[-1]["nombre"], "jornada": int(m.get("numMatchDay") or 0), "fecha": m.get("matchDay"),
+                                   "idLocal": int(m["idLocalTeam"]), "local": m["nameLocalTeam"], "pl": int(m["localScore"]),
+                                   "idVisitante": int(m["idVisitorTeam"]), "visitante": m["nameVisitorTeam"], "pv": int(m["visitorScore"])})
                 ident = m.get("universallyid") or m.get("idMatchCall")
-                if ident and m.get("localScore") is not None:
+                if ident:
                     partidos.append((grupos[-1]["nombre"], ident))
 
     def acta(p):
@@ -354,10 +361,28 @@ def liga():
             return p[0], None
 
     jugadoras = {}
+    equipos = {}
     with ThreadPoolExecutor(max_workers=8) as ex:
         actas = list(ex.map(acta, partidos))
     for grupo, st in actas:
-        for t in (st or {}).get("teams") or []:
+        teams = (st or {}).get("teams") or []
+        for t in teams:
+            # Totales del equipo en los partidos con acta: tiro, faltas y puntos por cuarto (a favor y en contra)
+            otro = next((o for o in teams if o is not t), None)
+            if otro is None:
+                continue
+            e = equipos.setdefault(str(t.get("teamIdExtern")), {"nombre": t.get("name"), "grupo": grupo, "actas": 0, "pts": 0, "ptsRival": 0,
+                                                               "t1a": 0, "t1i": 0, "t2a": 0, "t2i": 0, "t3a": 0, "t3i": 0, "faltas": 0,
+                                                               "cuartos": [0, 0, 0, 0], "cuartosRival": [0, 0, 0, 0]})
+            e["actas"] += 1
+            e["pts"] += (t.get("data") or {}).get("score", 0)
+            e["ptsRival"] += (otro.get("data") or {}).get("score", 0)
+            for k, v in lanzamientos(t.get("data") or {}).items():
+                e[k] += v
+            for clave, quien in (("cuartos", t), ("cuartosRival", otro)):
+                for i, q in enumerate((quien.get("periods") or [])[:4]):
+                    e[clave][i] += q.get("score", 0)
+        for t in teams:
             for j in t.get("players") or []:
                 if not ((j.get("timePlayed") or 0) > 0 or (j.get("gamePlayed") or 0) > 0):
                     continue
@@ -367,6 +392,7 @@ def liga():
                     "grupo": grupo, "pj": 0, "min": 0, "pts": 0, "val": 0, "mm": 0,
                     "t1a": 0, "t1i": 0, "t2a": 0, "t2i": 0, "t3a": 0, "t3i": 0, "faltas": 0})
                 a["pj"] += 1
+                a["dorsal"] = j.get("dorsal") or a.get("dorsal")   # el del último partido, por si cambia de número
                 a["min"] += j.get("timePlayed") or 0
                 a["pts"] += d.get("score", 0)
                 a["val"] += d.get("valoration", 0)
@@ -375,7 +401,7 @@ def liga():
                     a[k] += v
     con_acta = sum(1 for _, st in actas if st and st.get("teams"))
     print(f"Liga: {len(grupos)} grupos, {con_acta} actas, {len(jugadoras)} jugadoras")
-    return {"grupos": grupos, "actas": con_acta, "jugadoras": list(jugadoras.values())}
+    return {"grupos": grupos, "actas": con_acta, "jugadoras": list(jugadoras.values()), "equipos": equipos, "resultados": resultados}
 
 
 def evolucion(jugadas, duracion, local):

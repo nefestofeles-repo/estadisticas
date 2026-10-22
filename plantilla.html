@@ -108,6 +108,13 @@ a.gcal:hover { background: color-mix(in srgb, var(--s1) 10%, transparent); }
   .lg-row { grid-template-columns: minmax(0, 1fr) auto; row-gap: 6px; }
   .lg-row .pista { grid-column: 1; }
 }
+table.vs th, table.vs td { width: 34%; }
+table.vs th:first-child, table.vs td:first-child { width: auto; }
+table.vs th { white-space: normal; }
+table.vs th:nth-child(2), table.vs td:nth-child(2) { text-align: right; }
+table.vs small { color: var(--muted); }
+@media (max-width: 560px) { table.vs small { display: block; } table.vs td:first-child { white-space: normal; } }
+tr.grupo td { font-weight: 600; text-align: left; border-bottom: 0; padding-top: 12px; }
 tr.sep td { color: var(--muted); text-align: center; border-bottom: 0; }
 tr.nuestro td { font-weight: 600; background: color-mix(in srgb, var(--s1) 10%, transparent); }
 .duelo { display: flex; align-items: center; gap: 6px; flex: none; }
@@ -265,7 +272,7 @@ footer { margin-top: 32px; font-size: 12px; color: var(--muted); }
   </section>
 
   <h2>Próximos partidos</h2>
-  <div class="card scroll"><table id="eCalendario"></table></div>
+  <div class="card scroll"><p class="sub" style="margin-top:0">Pulsa un rival para ver su informe.</p><table id="eCalendario"></table></div>
   </section>
 
   <section id="vPartido" hidden>
@@ -290,6 +297,32 @@ footer { margin-top: 32px; font-size: 12px; color: var(--muted); }
   <div class="card scroll"><table id="pRival"></table></div>
   </div>
   <p class="empty" id="pSinActa" hidden></p>
+  </section>
+
+  <section id="vRival" hidden>
+  <h2>El rival frente a nosotras</h2>
+  <div class="card scroll"><p class="sub" style="margin-top:0" id="rVsSub"></p><table id="rVs" class="vs"></table></div>
+
+  <section id="rIdaBloque" hidden>
+  <h2>Partidos anteriores contra ellas</h2>
+  <div class="card scroll"><table id="rIda"></table></div>
+  </section>
+
+  <h2>Sus resultados</h2>
+  <div class="card scroll"><table id="rResultados"></table></div>
+
+  <section id="rComunesBloque" hidden>
+  <h2>Rivales comunes</h2>
+  <div class="card scroll"><p class="sub" style="margin-top:0">Resultados de los dos equipos contra los mismos rivales (diferencia de puntos entre paréntesis).</p><table id="rComunes"></table></div>
+  </section>
+
+  <section id="rCuartosBloque" hidden>
+  <h2>Puntos por cuarto</h2>
+  <div class="card scroll"><p class="sub" style="margin-top:0">Media por partido con acta digital: puntos anotados – recibidos en cada cuarto.</p><table id="rCuartos" class="vs"></table></div>
+  </section>
+
+  <h2>Sus jugadoras</h2>
+  <div class="card scroll"><p class="sub" style="margin-top:0" id="rJugSub"></p><table id="rJugadoras"></table></div>
   </section>
 
   <footer id="pie"></footer>
@@ -333,6 +366,7 @@ function rankingLiga(L, m) {
   return { lista, minPj, puesto: v => 1 + lista.filter(x => x.v > v).length,
            media: lista.length ? lista.reduce((a, x) => a + x.v, 0) / lista.length : null };
 }
+const signoTxt = v => (v > 0 ? '+' : '') + v;
 const valorLiga = (m, v) => v == null ? '–' : m.pct ? Math.round(v) + '%' : (m.signo && v > 0 ? '+' : '') + fmt(v);
 const enLiga = (L, j) => L.jugadoras.find(x => j.uuid ? x.uuid === j.uuid : x.nombre === j.nombre);
 const enlaceFbcyl = (href, txt) => `<a class="refresco" href="${esc(href)}" target="_blank" rel="noopener">${txt} ↗</a>`;
@@ -397,14 +431,18 @@ function alCambiarTema(f) {
 function arrancar(TODO) {
 addEventListener('hashchange', () => location.reload());
 const PARTIDO = TODO.equipoDatos?.partidos.find(p => location.hash === enlacePartido(p)) || null;
-const EQUIPO = (location.hash === '#equipo' || PARTIDO) && TODO.equipoDatos;
+// Informe de un rival: #rival-<id de equipo>; la pestaña "Próximo rival" lleva al del siguiente partido sin jugar
+const RIVAL = TODO.liga?.equipos && TODO.equipoDatos ? (location.hash.match(/^#rival-(\d+)$/) || [])[1] || null : null;
+const SIGUIENTE = TODO.equipoDatos?.partidos.find(p => !p.jugado && p.idRival);
+const EQUIPO = (location.hash === '#equipo' || PARTIDO || RIVAL) && TODO.equipoDatos;
 const IDX = EQUIPO ? -1 : Math.min(Math.max(parseInt(location.hash.slice(1)) || 0, 0), TODO.jugadoras.length - 1);
 
 // --- Pestañas y enlace de actualización (comunes) ---
 const avatar = (el, j) => { if (j.foto) el.style.backgroundImage = `url("${j.foto}")`; else el.textContent = iniciales(titleCase(j.nombre)); };
 document.getElementById('tabs').innerHTML = TODO.jugadoras.map((j, k) =>
   `<a href="#${k}" ${k === IDX ? 'aria-current="page"' : ''}><span class="avatar"></span>${titleCase(j.nombre).split(' ').slice(0, 2).join(' ')}</a>`).join('') +
-  (TODO.equipoDatos ? `<a href="#equipo" class="equipo" ${EQUIPO ? 'aria-current="page"' : ''}>Equipo</a>` : '');
+  (TODO.equipoDatos ? `<a href="#equipo" class="equipo" ${EQUIPO && !RIVAL ? 'aria-current="page"' : ''}>Equipo</a>` : '') +
+  (TODO.liga?.equipos && SIGUIENTE ? `<a href="#rival-${SIGUIENTE.idRival}" class="equipo" ${RIVAL ? 'aria-current="page"' : ''}>Próximo rival</a>` : '');
 document.querySelectorAll('#tabs .avatar').forEach((el, k) => avatar(el, TODO.jugadoras[k]));
 
 // Enlace a GitHub para lanzar la actualización a mano ("Run workflow"); hace falta haber iniciado sesión en GitHub
@@ -424,7 +462,7 @@ document.addEventListener('mousemove', e => {
   tip.style.left = Math.min(e.clientX + 12, innerWidth - tip.offsetWidth - 8) + 'px'; tip.style.top = (e.clientY + 12) + 'px';
 });
 
-if (PARTIDO) vistaPartido(TODO, PARTIDO); else if (EQUIPO) vistaEquipo(TODO); else vistaJugadora(TODO, IDX);
+if (RIVAL) vistaRival(TODO, RIVAL); else if (PARTIDO) vistaPartido(TODO, PARTIDO); else if (EQUIPO) vistaEquipo(TODO); else vistaJugadora(TODO, IDX);
 }
 
 function vistaJugadora(TODO, IDX) {
@@ -854,15 +892,15 @@ if (L && L.jugadoras.length) {
     document.getElementById('eLigaSub').textContent = `${r.lista.length} jugadoras con puesto de las ${L.jugadoras.length} de ${L.grupos.length} grupos ` +
       `(${L.actas} partidos con acta${m.total ? '' : `; mínimo ${r.minPj} partido${r.minPj === 1 ? '' : 's'} jugado${r.minPj === 1 ? '' : 's'}${m.int ? ' y un mínimo de intentos' : ''}`}). ` +
       `Media de la liga: ${valorLiga(m, r.media)}. En azul, las de nuestro equipo.`;
-    const fila = (x, pos) => `<tr${x.j.idEquipo === E.id ? ' class="nuestro"' : ''}><td>${pos ?? '–'}</td>
-      <td>${nombreConFicha(esc(titleCase(x.j.nombre)), fbcylJugadora(E.temporada, x.j, x.j.idEquipo))}</td>
+    const fila = (x, pos) => `<tr${x.j.idEquipo === E.id ? ' class="nuestro"' : ''}><td>${pos ?? '–'}</td><td>${esc(x.j.dorsal ?? '')}</td>
+      <td style="text-align:left">${nombreConFicha(esc(titleCase(x.j.nombre)), fbcylJugadora(E.temporada, x.j, x.j.idEquipo))}</td>
       <td style="text-align:left">${esc(titleCase(x.j.equipo))}</td><td style="text-align:left">${esc(x.j.grupo)}</td><td>${x.j.pj}</td><td><b>${valorLiga(m, x.v)}</b></td></tr>`;
     const top = r.lista.slice(0, 10);
     const resto = seguidas.filter(j => !top.some(x => x.j === j)).map(j => ({ j, v: m.f(j) }))
       .filter(x => x.v != null).sort((a, b) => b.v - a.v);
-    document.getElementById('eLiga').innerHTML = `<tr><th>Pos.</th><th>Jugadora</th><th style="text-align:left">Equipo</th><th style="text-align:left">Grupo</th><th>PJ</th><th>${m.t}</th></tr>` +
+    document.getElementById('eLiga').innerHTML = `<tr><th>Pos.</th><th>#</th><th style="text-align:left">Jugadora</th><th style="text-align:left">Equipo</th><th style="text-align:left">Grupo</th><th>PJ</th><th>${m.t}</th></tr>` +
       top.map((x, k) => fila(x, r.puesto(x.v))).join('') +
-      (resto.length ? '<tr class="sep"><td colspan="6">…</td></tr>' + resto.map(x => fila(x, r.lista.some(y => y.j === x.j) ? r.puesto(x.v) : null)).join('') : '');
+      (resto.length ? '<tr class="sep"><td colspan="7">…</td></tr>' + resto.map(x => fila(x, r.lista.some(y => y.j === x.j) ? r.puesto(x.v) : null)).join('') : '');
   };
   sel.addEventListener('change', pintarLiga);
   pintarLiga();
@@ -892,7 +930,7 @@ const enCalendario = p => {
 document.getElementById('eCalendario').innerHTML = pendientes.length
   ? `<tr><th>Jornada</th><th>Fecha</th><th style="text-align:left">Partido</th><th style="text-align:left">Rival</th><th style="text-align:left">Pabellón</th><th>Calendario</th></tr>` +
     pendientes.map(p => `<tr><td>J${p.jornada}</td><td>${fecha(p.fecha)}</td><td style="text-align:left">${p.local ? 'En casa' : 'Fuera'}</td>
-      <td style="text-align:left">${esc(titleCase(p.rival))}</td><td style="text-align:left">${esc(titleCase([p.pabellon, p.localidad].filter(Boolean).join(', ')))}</td><td>${enCalendario(p)}</td></tr>`).join('')
+      <td style="text-align:left">${TODO.liga?.equipos && p.idRival ? `<a class="ver" href="#rival-${p.idRival}" title="Informe del rival">${esc(titleCase(p.rival))}</a>` : esc(titleCase(p.rival))}</td><td style="text-align:left">${esc(titleCase([p.pabellon, p.localidad].filter(Boolean).join(', ')))}</td><td>${enCalendario(p)}</td></tr>`).join('')
   : '<tr><td class="empty">No quedan partidos en esta fase.</td></tr>';
 
 document.getElementById('pie').textContent = 'Fuente: clasificación y actas digitales de la Federación de Baloncesto de Castilla y León (fbcyl.es).';
@@ -1024,6 +1062,117 @@ document.getElementById('pRival').innerHTML = rivales.length
   : '<tr><td class="empty">El acta no trae las jugadoras del rival.</td></tr>';
 
 document.getElementById('pie').textContent = 'Fuente: acta digital del partido de la Federación de Baloncesto de Castilla y León (fbcyl.es).';
+}
+
+function vistaRival(TODO, id) {
+document.getElementById('vRival').hidden = false;
+const E = TODO.equipoDatos, L = TODO.liga;
+const yo = String(E.id), nosotras = L.equipos[yo], ellas = L.equipos[id];
+const nombre = titleCase(TODO.equipo);
+const deClas = E.clasificacion.find(c => String(c.id) === id), nuestra = E.clasificacion.find(c => c.id === E.id);
+const rival = titleCase(ellas?.nombre || deClas?.equipo || E.partidos.find(p => String(p.idRival) === id)?.rival || 'Rival');
+const proximo = E.partidos.find(p => !p.jugado && String(p.idRival) === id);
+const anteriores = E.partidos.filter(p => p.jugado && String(p.idRival) === id);
+const res = L.resultados.filter(r => String(r.idLocal) === id || String(r.idVisitante) === id)
+  .sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
+// Resultado desde el punto de vista de un equipo: [rival, a favor, en contra, en casa]
+const vista = (r, eq) => String(r.idLocal) === eq ? [r.visitante, r.pl, r.pv, true, r.idVisitante] : [r.local, r.pv, r.pl, false, r.idLocal];
+
+// --- Cabecera ---
+const foto = document.getElementById('foto');
+const logo = deClas?.logo || proximo?.logoRival || anteriores[0]?.logoRival;
+if (logo) { foto.style.backgroundImage = `url("${logo}")`; foto.style.backgroundSize = 'contain'; foto.style.backgroundColor = '#fff'; }
+else foto.textContent = iniciales(rival);
+document.getElementById('titulo').textContent = rival;
+document.title = `Informe · ${rival}`;
+document.getElementById('subtitulo').textContent = proximo
+  ? [`Próximo rival · Jornada ${proximo.jornada}`, fechaCorta(proximo.fecha), proximo.local ? 'En casa' : 'Fuera',
+     titleCase([proximo.pabellon, proximo.localidad].filter(Boolean).join(', '))].filter(Boolean).join(' · ')
+  : `Rival · ${ellas?.grupo || TODO.competicion}`;
+document.getElementById('meta').innerHTML = esc(`Actualizado ${TODO.actualizado} · ${res.length} partido${res.length === 1 ? '' : 's'} jugado${res.length === 1 ? '' : 's'}, ${ellas?.actas || 0} con acta digital`) +
+  `<div class="acciones"><a class="refresco" href="#equipo">← Equipo</a>${enlaceFbcyl(fbcylEquipo(id), 'Equipo en la FBCyL')}` +
+  (E.temporada && ellas ? enlaceFbcyl(`${FBCYL}/estadisticas/equipo/3/${E.temporada}/${id}/${encodeURIComponent(ellas.nombre)}`, 'Sus estadísticas') : '') + '</div>';
+
+// --- Comparación de los dos equipos ---
+const porPartido = (e, k) => e?.actas ? e[k] / e.actas : null;
+const balance = eq => { const rs = L.resultados.filter(r => String(r.idLocal) === eq || String(r.idVisitante) === eq).map(r => vista(r, eq));
+  return { n: rs.length, g: rs.filter(x => x[1] > x[2]).length, pf: rs.reduce((a, x) => a + x[1], 0), pc: rs.reduce((a, x) => a + x[2], 0) }; };
+const bE = balance(id), bN = balance(yo);
+document.getElementById('rVsSub').textContent = 'Puntos y balance de todos sus partidos; tiro y faltas, de los partidos con acta digital (media por partido).';
+const filasVs = [
+  ['Clasificación', deClas ? `${deClas.posicion}º · ${deClas.puntos} pts` : '–', nuestra ? `${nuestra.posicion}º · ${nuestra.puntos} pts` : '–'],
+  ['Victorias – derrotas', `${bE.g}–${bE.n - bE.g}`, `${bN.g}–${bN.n - bN.g}`],
+  ['Puntos a favor', fmt(bE.n ? bE.pf / bE.n : null), fmt(bN.n ? bN.pf / bN.n : null)],
+  ['Puntos en contra', fmt(bE.n ? bE.pc / bE.n : null), fmt(bN.n ? bN.pc / bN.n : null)],
+  ...[['% tiros de 2', 2], ['% triples', 3], ['% tiros libres', 1]].map(([k, t]) =>
+    [k, ellas ? `${pctTxt(ellas[`t${t}a`], ellas[`t${t}i`])} <small>(${fmt(porPartido(ellas, `t${t}a`))}/${fmt(porPartido(ellas, `t${t}i`))})</small>` : '–',
+        nosotras ? `${pctTxt(nosotras[`t${t}a`], nosotras[`t${t}i`])} <small>(${fmt(porPartido(nosotras, `t${t}a`))}/${fmt(porPartido(nosotras, `t${t}i`))})</small>` : '–']),
+  ['Faltas por partido', fmt(porPartido(ellas, 'faltas')), fmt(porPartido(nosotras, 'faltas'))],
+];
+document.getElementById('rVs').innerHTML = `<tr><th></th><th>${esc(rival)}</th><th>${esc(nombre)}</th></tr>` +
+  filasVs.map(([k, a, b]) => `<tr><td>${k}</td><td><b>${a}</b></td><td>${b}</td></tr>`).join('');
+
+// --- Partidos anteriores contra ellas (ida) ---
+if (anteriores.length) {
+  document.getElementById('rIdaBloque').hidden = false;
+  document.getElementById('rIda').innerHTML = `<tr><th>Jornada</th><th style="text-align:left">Fecha</th><th style="text-align:left">Dónde</th><th>Resultado</th><th></th></tr>` +
+    anteriores.map(p => `<tr><td><a class="ver" href="${enlacePartido(p)}">J${p.jornada}</a></td><td style="text-align:left">${fechaCorta(p.fecha)}</td>
+      <td style="text-align:left">${p.local ? 'En casa' : 'Fuera'}</td>
+      <td><span class="${p.puntosEquipo > p.puntosRival ? 'v-win' : 'v-loss'}">${p.puntosEquipo > p.puntosRival ? 'V' : 'D'}</span> ${p.puntosEquipo}–${p.puntosRival}</td>
+      <td><a class="ver" href="${enlacePartido(p)}">Ver detalle →</a></td></tr>`).join('');
+}
+
+// --- Sus resultados ---
+const marca = (gf, gc) => `<span class="${gf > gc ? 'v-win' : 'v-loss'}">${gf > gc ? 'V' : 'D'}</span> ${gf}–${gc} <small style="color:var(--muted)">(${gf - gc > 0 ? '+' : ''}${gf - gc})</small>`;
+document.getElementById('rResultados').innerHTML = res.length
+  ? `<tr><th>Jornada</th><th style="text-align:left">Contra</th><th style="text-align:left">Dónde</th><th>Resultado</th></tr>` +
+    res.map(r => { const [contra, gf, gc, casa, idContra] = vista(r, id);
+      return `<tr${String(idContra) === yo ? ' class="nuestro"' : ''}><td>J${r.jornada}</td><td style="text-align:left">${esc(titleCase(contra))}</td>
+        <td style="text-align:left">${casa ? 'En casa' : 'Fuera'}</td><td>${marca(gf, gc)}</td></tr>`; }).join('')
+  : '<tr><td class="empty">Todavía no ha jugado ningún partido.</td></tr>';
+
+// --- Rivales comunes ---
+const contra = eq => { const m = new Map();
+  for (const r of L.resultados) if (String(r.idLocal) === eq || String(r.idVisitante) === eq) {
+    const [nom, gf, gc, , idc] = vista(r, eq); if (!m.has(String(idc))) m.set(String(idc), { nom, rs: [] }); m.get(String(idc)).rs.push([gf, gc]); }
+  return m; };
+const cE = contra(id), cN = contra(yo);
+const comunes = [...cE.keys()].filter(k => cN.has(k) && k !== yo && k !== id);
+if (comunes.length) {
+  document.getElementById('rComunesBloque').hidden = false;
+  const celda = rs => rs.map(([gf, gc]) => marca(gf, gc)).join('<br>');
+  const dif = rs => rs.reduce((a, [gf, gc]) => a + gf - gc, 0);
+  document.getElementById('rComunes').innerHTML = `<tr><th>Rival</th><th style="text-align:left">${esc(rival)}</th><th>${esc(nombre)}</th></tr>` +
+    comunes.map(k => `<tr><td>${esc(titleCase(cE.get(k).nom))}</td><td style="text-align:left">${celda(cE.get(k).rs)}</td><td>${celda(cN.get(k).rs)}</td></tr>`).join('') +
+    `<tr class="total"><td>Diferencia total</td><td style="text-align:left"><b>${signoTxt(comunes.reduce((a, k) => a + dif(cE.get(k).rs), 0))}</b></td>
+      <td><b>${signoTxt(comunes.reduce((a, k) => a + dif(cN.get(k).rs), 0))}</b></td></tr>`;
+}
+
+// --- Puntos por cuarto ---
+if (ellas?.actas && nosotras?.actas) {
+  document.getElementById('rCuartosBloque').hidden = false;
+  const q = (e, k, i) => fmt(e[k][i] / e.actas);
+  // Una columna por equipo (anotados / recibidos), como la tabla de comparación
+  document.getElementById('rCuartos').innerHTML = `<tr><th>Cuarto</th><th>${esc(rival)}</th><th>${esc(nombre)}</th></tr>` +
+    [0, 1, 2, 3].map(i => `<tr><td>${i + 1}º</td><td><b>${q(ellas, 'cuartos', i)}</b> <small>– ${q(ellas, 'cuartosRival', i)}</small></td>
+      <td>${q(nosotras, 'cuartos', i)} <small>– ${q(nosotras, 'cuartosRival', i)}</small></td></tr>`).join('');
+}
+
+// --- Sus jugadoras ---
+const suyas = L.jugadoras.filter(j => String(j.idEquipo) === id).sort((a, b) => b.pts / b.pj - a.pts / a.pj || b.min - a.min);
+const rPts = rankingLiga(L, METRICAS_LIGA[0]);
+document.getElementById('rJugSub').textContent = suyas.length
+  ? `Totales de la temporada en los partidos con acta, ordenadas por puntos por partido. Puesto: en puntos por partido entre las ${rPts.lista.length} jugadoras de la liga con puesto (mínimo ${rPts.minPj} partido${rPts.minPj === 1 ? '' : 's'}).`
+  : '';
+document.getElementById('rJugadoras').innerHTML = suyas.length
+  ? `<tr><th>#</th><th>Jugadora</th><th>PJ</th><th>Min/p</th><th>Pts</th><th>Pts/p</th><th>Puesto</th><th>T2</th><th>T3</th><th>TL</th><th>Faltas/p</th><th>Val/p</th></tr>` +
+    suyas.map((j, k) => { const enRank = rPts.lista.some(x => x.j === j);
+      return `<tr><td>${esc(j.dorsal ?? '')}</td><td>${nombreConFicha(esc(titleCase(j.nombre)), fbcylJugadora(E.temporada, j, j.idEquipo))}</td><td>${j.pj}</td>
+      <td>${fmt(j.min / j.pj)}</td><td>${j.pts}</td><td><b>${fmt(j.pts / j.pj)}</b></td><td>${enRank ? rPts.puesto(j.pts / j.pj) + 'ª' : '–'}</td>
+      <td>${j.t2a}/${j.t2i}</td><td>${j.t3a}/${j.t3i}</td><td>${j.t1a}/${j.t1i}</td><td>${fmt(j.faltas / j.pj)}</td><td>${fmt(j.val / j.pj)}</td></tr>`; }).join('')
+  : '<tr><td class="empty">Todavía no hay actas digitales de sus partidos.</td></tr>';
+
+document.getElementById('pie').textContent = 'Fuente: resultados y actas digitales de la Federación de Baloncesto de Castilla y León (fbcyl.es).';
 }
 </script>
 <script>
