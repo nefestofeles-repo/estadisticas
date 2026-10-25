@@ -95,6 +95,7 @@ select { font: inherit; padding: 6px 8px; border-radius: 8px; border: 1px solid 
 .v-win { color: var(--good); font-weight: 600; }
 .v-loss { color: var(--neg); font-weight: 600; }
 .tabs a.equipo { padding-left: 14px; }
+.tabs a.directo.hoy { color: var(--neg); font-weight: 600; box-shadow: 0 0 0 1px color-mix(in srgb, var(--neg) 50%, transparent); }
 a.gcal { display: inline-block; white-space: nowrap; padding: 3px 10px; border-radius: 999px; font-size: 13px; color: var(--s1); text-decoration: none; border: 1px solid color-mix(in srgb, var(--s1) 40%, transparent); }
 a.gcal:hover { background: color-mix(in srgb, var(--s1) 10%, transparent); }
 .lg-row { display: grid; grid-template-columns: 170px 56px minmax(0, 1fr) 96px; gap: 12px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--grid); font-size: 13px; }
@@ -428,6 +429,15 @@ function alCambiarTema(f) {
   new MutationObserver(f).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 }
 
+// Pestaña de la página de directo (directo.html); si hoy juega el equipo, destacada y con la hora
+function pestanaDirecto(TODO) {
+  const hoy = new Date().toDateString();
+  const p = TODO.equipoDatos?.partidos.find(p => new Date((p.fecha || '').replace(' ', 'T')).toDateString() === hoy);
+  const d = p && new Date(p.fecha.replace(' ', 'T'));
+  const hora = d && (d.getHours() || d.getMinutes()) ? ' · ' + d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : '';
+  return p ? `<a href="directo.html" class="equipo directo hoy">● Directo hoy${hora}</a>` : `<a href="directo.html" class="equipo directo">Directo</a>`;
+}
+
 function arrancar(TODO) {
 addEventListener('hashchange', () => location.reload());
 const PARTIDO = TODO.equipoDatos?.partidos.find(p => location.hash === enlacePartido(p)) || null;
@@ -442,7 +452,8 @@ const avatar = (el, j) => { if (j.foto) el.style.backgroundImage = `url("${j.fot
 document.getElementById('tabs').innerHTML = TODO.jugadoras.map((j, k) =>
   `<a href="#${k}" ${k === IDX ? 'aria-current="page"' : ''}><span class="avatar"></span>${titleCase(j.nombre).split(' ').slice(0, 2).join(' ')}</a>`).join('') +
   (TODO.equipoDatos ? `<a href="#equipo" class="equipo" ${EQUIPO && !RIVAL ? 'aria-current="page"' : ''}>Equipo</a>` : '') +
-  (TODO.liga?.equipos && SIGUIENTE ? `<a href="#rival-${SIGUIENTE.idRival}" class="equipo" ${RIVAL ? 'aria-current="page"' : ''}>Próximo rival</a>` : '');
+  (TODO.liga?.equipos && SIGUIENTE ? `<a href="#rival-${SIGUIENTE.idRival}" class="equipo" ${RIVAL ? 'aria-current="page"' : ''}>Próximo rival</a>` : '') +
+  pestanaDirecto(TODO);
 document.querySelectorAll('#tabs .avatar').forEach((el, k) => avatar(el, TODO.jugadoras[k]));
 
 // Enlace a GitHub para lanzar la actualización a mano ("Run workflow"); hace falta haber iniciado sesión en GitHub

@@ -2,47 +2,60 @@ name: Actualizar y publicar
 
 on:
   workflow_dispatch:          # botón "Run workflow" en la pestaña Actions
-    inputs:
-      directo:
-        description: "Solo el partido en juego (lo usa directo.py)"
-        type: boolean
-        default: false
   schedule:                   # cada madrugada a las 3:33 hora de Madrid (GitHub va en UTC: una sirve en verano y otra en invierno)
     - cron: "33 1 * * *"      # 3:33 en horario de verano (UTC+2)
     - cron: "33 2 * * *"      # 3:33 en horario de invierno (UTC+1)
+    - cron: "7,37 * * * *"    # cada media hora: solo sigue si se acaba de cerrar el acta de un partido del equipo
 
 permissions:
   contents: write             # para el commit suelto que identifica cada despliegue (no mueve ninguna rama)
   pages: write
   id-token: write
-  actions: write              # para lanzar "Partido en directo"
-
-concurrency:
-  group: pages
-  cancel-in-progress: false
 
 jobs:
   hora:
-    # De las dos ejecuciones programadas, sigue solo la que corresponde al horario vigente en Madrid
+    # De las dos ejecuciones de las 3:33, sigue solo la del horario vigente en Madrid; de las de cada media hora,
+    # solo si el acta de un partido del equipo se ha cerrado hace poco (así el panel la tiene al poco de acabar)
     runs-on: ubuntu-latest
     outputs:
-      seguir: ${{ steps.h.outputs.seguir }}
+      seguir: ${{ steps.h.outputs.seguir || steps.acta.outputs.seguir }}
     steps:
       - id: h
         env:
           CRON: ${{ github.event.schedule }}
         run: |
           desfase=$(TZ=Europe/Madrid date +%z)
-          if [ "${{ github.event_name }}" != "schedule" ] \
+          if [ "$CRON" = "7,37 * * * *" ]; then
+            echo "comprobar=1" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" != "schedule" ] \
              || { [ "$desfase" = "+0200" ] && [ "$CRON" = "33 1 * * *" ]; } \
              || { [ "$desfase" = "+0100" ] && [ "$CRON" = "33 2 * * *" ]; }; then
             echo "seguir=1" >> "$GITHUB_OUTPUT"
           fi
+      - if: steps.h.outputs.comprobar == '1'
+        uses: actions/checkout@v4
+      - if: steps.h.outputs.comprobar == '1'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - if: steps.h.outputs.comprobar == '1'
+        run: pip install cryptography
+      - id: acta
+        if: steps.h.outputs.comprobar == '1'
+        env:
+          JUGADORAS: "-"
+          TZ: Europe/Madrid
+        run: |
+          if python3 actualizar.py --acta-reciente; then echo "seguir=1" >> "$GITHUB_OUTPUT"; fi
 
   publicar:
     needs: hora
     if: needs.hora.outputs.seguir == '1'
     runs-on: ubuntu-latest
+    # Una publicación cada vez (a nivel de trabajo: las comprobaciones de media hora no hacen cola)
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.despliegue.outputs.page_url }}
@@ -56,11 +69,10 @@ jobs:
         env:
           INFORME_CLAVE: ${{ secrets.INFORME_CLAVE }}
           JUGADORAS: ${{ secrets.JUGADORAS }}
-          DIRECTO: ${{ inputs.directo }}
           TZ: Europe/Madrid
         run: |
           python3 actualizar.py
-          mkdir -p web && cp informe.html web/index.html
+          mkdir -p web && cp informe.html web/index.html && cp directo.html web/directo.html
       - id: artefacto
         uses: actions/upload-pages-artifact@v3
         with:
@@ -102,8 +114,3 @@ jobs:
           done
           echo "::error::GitHub Pages sigue sirviendo la versión anterior de la página"
           exit 1
-      - name: Programar la actualización en directo si hoy hay partido
-        if: github.event_name == 'schedule'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh workflow run partido.yml --repo "${{ github.repository }}"

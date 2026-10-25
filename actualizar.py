@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Descarga las estadísticas de una jugadora de la FBCyL y genera el panel HTML.
 
-Uso:  python3 actualizar.py        (pide la contraseña, o la toma de la variable INFORME_CLAVE)
-Resultado: datos/partidos.json  e  informe.html (con los datos cifrados con esa contraseña)
+Uso:  python3 actualizar.py                  (pide la contraseña, o la toma de la variable INFORME_CLAVE)
+      python3 actualizar.py --acta-reciente  (¿se ha cerrado hace poco el acta de algún partido? código 0 si sí)
+Resultado: datos/partidos.json, informe.html y directo.html (con los datos cifrados con esa contraseña)
 """
 import base64
 import functools
@@ -11,7 +12,7 @@ import hashlib
 import json
 import os
 import re
-import time
+import sys
 from concurrent.futures import ThreadPoolExecutor
 import unicodedata
 import urllib.request
@@ -31,12 +32,10 @@ EQUIPO_ID = 40103                     # PONCE PUCELA BASKET B3
 GRUPOS = [7438]                       # 2ª Div. Cadete Fem. - Grupo C (añadir fases siguientes aquí)
 CATEGORIA = 1135                      # 2ªDIV.- CAD. FEM. AUT.: la comparación con la liga usa todos sus grupos
 TEMPORADA_ACTUAL = True
-DURACION = timedelta(hours=2, minutes=30)   # ventana del modo directo (algunos partidos pasan de 1 h 50 min)
 # -----------------------------------------------------------------------------
 
 ESB = "https://esb.optimalwayconsulting.com/fbcyl/1/jR4rgA5K6Chhh5vyfrxo9wTScdg2NT7K"
 STATS = "https://msstats.optimalwayconsulting.com/v1/fbcyl"
-DIRECTO = "https://streaming.optimalwayconsulting.com/fbcyl/streaming"   # datos del partido mientras se juega
 BASE = Path(__file__).resolve().parent
 
 
@@ -187,56 +186,8 @@ def lanzamientos(d):
             "faltas": d.get("faults", 0)}
 
 
-# El directo da las jugadas en catalán; el acta final, en castellano (que es lo que entiende el resto del código)
-JUGADAS_CA = [("Cistella de", "Canasta de"), ("Intent fallat de", "Intento fallado de"), ("Entra al camp", "Entra al campo"),
-              ("Surt del camp", "Sale del campo"), ("Salt guanyat", "Salto ganado"), ("Salt perdut", "Salto perdido"),
-              ("Final de període", "Fin de período")]
-
-
-def castellano(jugada):
-    mov = jugada.get("move") or ""
-    for ca, es in JUGADAS_CA:
-        if mov.startswith(ca) and not mov.startswith(es):
-            return {**jugada, "move": es + mov[len(ca):]}
-    return jugada
-
-
-@functools.lru_cache(maxsize=None)
-def en_vivo(ad_game_id):
-    """Estadísticas del partido mientras se juega, con el mismo formato que el acta (None si no está en juego).
-
-    El acta (getJsonWithMatchStats) no aparece hasta que se cierra al final; este es el servicio que usa la web de la
-    federación para el directo. Le faltan algunos datos del acta (titulares, +/−, puntos por cuarto de cada jugadora).
-    """
-    try:
-        d = get(f"{DIRECTO}/match-id/{ad_game_id}")
-    except Exception as e:
-        print(f"  directo {ad_game_id}: sin datos ({e})")
-        return None
-    if not d or not d.get("teams"):
-        return None
-    d["moves"] = [castellano(j) for j in d.get("moves") or []]
-    # Titulares: las que hacen algo, o salen del campo, antes de su primera entrada
-    titulares, vistas = set(), set()
-    for j in sorted(d["moves"], key=lambda j: j.get("timestamp") or ""):
-        nombre = normaliza(j.get("actorName"))
-        if not nombre or nombre in vistas:
-            continue
-        vistas.add(nombre)
-        if j.get("move") != "Entra al campo":
-            titulares.add(nombre)
-    for t in d["teams"]:
-        for jug in t.get("players", []):
-            jug.setdefault("starting", normaliza(jug.get("name")) in titulares)
-    return d
-
-
 def acta(p):
-    """(estadísticas, jugadas) de un partido: las del directo mientras se juega y, si no, las del acta digital."""
-    if p.get("enJuego") and p.get("adGameId"):
-        vivo = en_vivo(p["adGameId"])
-        if vivo:
-            return vivo, vivo["moves"]
+    """(estadísticas, jugadas) del acta digital de un partido; (None, []) si aún no está cerrada."""
     if not (p["jugado"] and p.get("uuidPartido")):
         return None, []
     st = estadisticas(p["jornada"], p["uuidPartido"])
@@ -267,7 +218,6 @@ def partido(grupo, num, m):
         # El universallyid no aparece hasta que se cierra el acta; el idMatchCall está desde antes
         # del partido y la API de estadísticas lo acepta igual, también en directo
         "estadisticas": False, "uuidPartido": m.get("idMatchCall") or m.get("universallyid"),
-        "adGameId": m.get("adGameId"),   # identificador del directo; aparece cuando la mesa abre el partido
         # Página del partido en la web de la federación (carga el acta con cualquiera de los dos identificadores)
         "fbcyl": f"https://www.fbcyl.es/estadisticas/partido/{m.get('season')}/{m.get('universallyid') or m.get('idMatchCall')}"
                  if m.get("season") and (m.get("universallyid") or m.get("idMatchCall")) else None,
@@ -280,31 +230,6 @@ def equipos(st):
     teams = (st or {}).get("teams", [])
     return (next((t for t in teams if t.get("teamIdExtern") == EQUIPO_ID), None),
             next((t for t in teams if t.get("teamIdExtern") != EQUIPO_ID), None))
-
-
-def en_horario(fecha, ahora):
-    try:
-        inicio = datetime.strptime(fecha, "%Y-%m-%d %H:%M:%S")
-    except (TypeError, ValueError):
-        return False
-    return inicio <= ahora < inicio + DURACION
-
-
-def en_directo(p):
-    """Marca el partido que se está jugando (si el directo tiene datos) y toma su marcador en vivo.
-
-    Si ya no está en directo pero el calendario aún no tiene el resultado, lo saca del acta si ya está cerrada.
-    """
-    if not en_horario(p["fecha"], datetime.now()):
-        return p
-    nuestro, rival = equipos(en_vivo(p["adGameId"]) if p.get("adGameId") else None)
-    if nuestro and rival:
-        p.update(enJuego=True, jugado=True, puntosEquipo=nuestro["data"].get("score", 0), puntosRival=rival["data"].get("score", 0))
-    elif not p["jugado"] and p.get("uuidPartido"):
-        nuestro, rival = equipos(estadisticas(p["jornada"], p["uuidPartido"]))
-        if nuestro and rival:
-            p.update(jugado=True, puntosEquipo=nuestro["data"].get("score", 0), puntosRival=rival["data"].get("score", 0))
-    return p
 
 
 def ficha(base, jugadora):
@@ -561,25 +486,9 @@ def descifra(cifrado, clave):
     return json.loads(AESGCM(llave).decrypt(b64(cifrado["iv"]), b64(cifrado["datos"]), None))
 
 
-def pagina_publicada(clave):
-    """Datos de la página ya publicada en GitHub Pages (descifrados), o None si no se puede."""
-    repo = os.environ.get("GITHUB_REPOSITORY", "")
-    url = os.environ.get("PAGINA") or (f"https://{repo.split('/')[0]}.github.io/{repo.split('/')[1]}/" if "/" in repo else None)
-    if not url:
-        return None
-    try:
-        req = urllib.request.Request(f"{url}?t={int(time.time())}", headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=30) as r:
-            html = r.read().decode("utf-8")
-        return descifra(json.loads(re.search(r"const CIFRADO = (\{.*?\});", html).group(1)), clave)
-    except Exception as e:
-        print(f"No se pudo leer la página publicada ({e})")
-        return None
-
-
 def actualizacion_completa():
     partidos_equipo = sorted(partidos_del_equipo(), key=lambda g: (g[2]["matchDay"] or "", g[0]))
-    bases = [en_directo(partido(grupo, num, m)) for grupo, num, m in partidos_equipo]
+    bases = [partido(grupo, num, m) for grupo, num, m in partidos_equipo]
     jugadoras = []
     for jugadora in JUGADORAS:
         print(f"\n== {jugadora}")
@@ -604,45 +513,23 @@ def actualizacion_completa():
                             "partidos": [partido_equipo(b, seguidas) for b in bases]}}
 
 
-def solo_partido_en_curso(clave):
-    """Modo directo: parte de la página publicada y solo descarga el partido que se está jugando.
+def acta_reciente(minutos=90):
+    """¿Se ha cerrado el acta de algún partido del equipo en los últimos minutos? (para actualizar al terminar)
 
-    Devuelve None si no se puede (página antigua o ilegible, o ningún partido en juego): entonces se hace la completa.
+    El universallyid del partido es un ObjectId que lleva dentro la hora en que se creó, al cerrarse el acta.
     """
-    anterior = pagina_publicada(clave)
-    if not anterior or "equipoDatos" not in anterior:
-        return None
-    ahora = datetime.now()
-    actual = next((p for p in anterior["equipoDatos"]["partidos"] if en_horario(p["fecha"], ahora)), None)
-    if not actual:
-        print("Ningún partido en juego ahora mismo.")
-        return None
-    # El partido, recién leído del calendario: el identificador del directo (adGameId) no existe hasta que empieza
-    m = next((m for g, n, m in partidos_del_equipo() if (g, n) == (actual["grupo"], actual["jornada"])), None)
-    if not m:
-        return None
-    base = en_directo(partido(actual["grupo"], actual["jornada"], m))
-    print(f"Directo J{base['jornada']} vs {base['rival']}: {base['puntosEquipo']}-{base['puntosRival']}"
-          f"{' (en juego)' if base.get('enJuego') else ''}")
-    mismo = lambda p: (p["grupo"], p["jornada"]) == (base["grupo"], base["jornada"])
-    if not base["jugado"] and actual.get("jugado"):
-        # Ya no hay directo y el acta aún no está cerrada: se queda lo último publicado
-        print("Sin datos nuevos del partido; se mantiene lo publicado.")
-        for p in anterior["equipoDatos"]["partidos"] + [q for j in anterior["jugadoras"] for q in j["partidos"]]:
-            if mismo(p):
-                p.pop("enJuego", None)
-        return anterior
-    for j in anterior["jugadoras"]:
-        j["partidos"] = [ficha(base, j["nombre"]) if mismo(p) else p for p in j["partidos"]]
-    seguidas = {normaliza(j["nombre"]) for j in anterior["jugadoras"]}
-    anterior["equipoDatos"]["partidos"] = [partido_equipo(base, seguidas) if mismo(p) else p
-                                           for p in anterior["equipoDatos"]["partidos"]]
-    return anterior
+    ahora = datetime.now().timestamp()
+    for _, num, m in partidos_del_equipo():
+        uid = m.get("universallyid") or ""
+        if len(uid) == 24 and 0 <= ahora - int(uid[:8], 16) < minutos * 60:
+            print(f"J{num}: acta cerrada hace {int((ahora - int(uid[:8], 16)) // 60)} min")
+            return True
+    return False
 
 
 def main():
     clave = pide_clave()
-    salida = (os.environ.get("DIRECTO") == "true" and solo_partido_en_curso(clave)) or actualizacion_completa()
+    salida = actualizacion_completa()
     salida.update(actualizado=datetime.now().strftime("%d/%m/%Y %H:%M"),
                   repo=os.environ.get("GITHUB_REPOSITORY"))   # para el enlace "Actualizar datos" (solo en GitHub Actions)
     jugadoras = salida["jugadoras"]
@@ -653,8 +540,18 @@ def main():
     plantilla = (BASE / "plantilla.html").read_text(encoding="utf-8")
     html = plantilla.replace("/*__CIFRADO__*/null", json.dumps(cifra(salida, clave)))
     (BASE / "informe.html").write_text(html, encoding="utf-8")
+
+    # Página del directo: lee los datos en vivo de la federación desde el navegador; aquí solo va cifrado
+    # lo que identifica al equipo y a las jugadoras que se siguen (misma contraseña y misma clave que el panel)
+    config = {"equipo": salida["equipo"], "equipoId": EQUIPO_ID, "grupos": GRUPOS, "esb": ESB,
+              "seguidas": [normaliza(j["nombre"]) for j in jugadoras]}
+    plantilla = (BASE / "plantilla_directo.html").read_text(encoding="utf-8")
+    html = plantilla.replace("/*__CIFRADO__*/null", json.dumps(cifra(config, clave)))
+    (BASE / "directo.html").write_text(html, encoding="utf-8")
     print(f"\nInforme generado: {BASE / 'informe.html'}")
 
 
 if __name__ == "__main__":
+    if "--acta-reciente" in sys.argv:   # lo usa publicar.yml: termina con 0 si hay que actualizar
+        sys.exit(0 if acta_reciente() else 1)
     main()

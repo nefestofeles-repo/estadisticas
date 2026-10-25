@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Directo</title>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb;
+  --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --ring: rgba(11,11,11,0.10);
+  --s1: #2a78d6; --s2: #eb6834; --neg: #e34948; --warn: #c27c00; --good: #006300; --live: #e34948;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19;
+    --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10);
+    --s1: #3987e5; --s2: #d95926; --neg: #e66767; --warn: #e0a030; --good: #0ca30c; --live: #ff5c5c;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19;
+  --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10);
+  --s1: #3987e5; --s2: #d95926; --neg: #e66767; --warn: #e0a030; --good: #0ca30c; --live: #ff5c5c;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink);
+  font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 860px; margin: 0 auto; padding: 16px 16px 48px; }
+a { color: var(--s1); }
+.barra { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 16px; font-size: 13px; color: var(--muted); }
+.barra a { text-decoration: none; padding: 4px 12px; border-radius: 999px; border: 1px solid var(--axis); background: var(--surface); color: var(--ink); }
+.card { background: var(--surface); border-radius: 12px; box-shadow: 0 0 0 1px var(--ring); padding: 16px; min-width: 0; }
+.scroll { overflow-x: auto; }
+h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-2); margin: 24px 0 10px; font-weight: 600; }
+.estado { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.estado.vivo { color: var(--live); }
+.estado.vivo::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--live); animation: latido 1.4s infinite; }
+@keyframes latido { 50% { opacity: .25; } }
+.marcador { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; text-align: center; margin-top: 10px; }
+.equipo img, .equipo .ini { width: 56px; height: 56px; border-radius: 50%; object-fit: contain; background: #fff; box-shadow: 0 0 0 1px var(--ring);
+  display: grid; place-items: center; margin: 0 auto 6px; font-weight: 600; color: #555; }
+.equipo .nom { font-size: 13px; line-height: 1.25; color: var(--ink-2); }
+.equipo.nuestro .nom { color: var(--ink); font-weight: 600; }
+.tanteo { font-size: 44px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; letter-spacing: -0.02em; }
+.reloj { font-size: 14px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.faltas-eq { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); margin-top: 12px; border-top: 1px solid var(--grid); padding-top: 10px; }
+.faltas-eq b.aviso { color: var(--warn); }
+table { border-collapse: collapse; width: 100%; font-size: 14px; font-variant-numeric: tabular-nums; }
+th, td { padding: 6px 6px; text-align: right; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+th { color: var(--ink-2); font-weight: 600; font-size: 13px; }
+th.i, td.i { text-align: left; }
+td.pista { width: 14px; padding-right: 0; }
+#cuartos td.i { white-space: normal; min-width: 120px; }
+@media (max-width: 560px) { table { font-size: 13px; } th, td { padding: 6px 4px; } }
+.punto { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--good); }
+tr.banco td { color: var(--muted); }
+tr.banco td b { color: var(--ink-2); }
+.f4 { color: var(--warn); font-weight: 700; }
+.f5 { color: #fff; background: var(--neg); font-weight: 700; border-radius: 6px; padding: 1px 6px; }
+.jugadas { list-style: none; margin: 0; padding: 0; font-size: 14px; }
+.jugadas li { display: grid; grid-template-columns: 64px 1fr auto; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--grid); }
+.jugadas li:last-child { border-bottom: 0; }
+.jugadas .t { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 13px; }
+.jugadas .s { font-variant-numeric: tabular-nums; color: var(--ink-2); }
+.jugadas li.nuestra { box-shadow: inset 3px 0 0 var(--s1); padding-left: 8px; }
+.jugadas li.rival { box-shadow: inset 3px 0 0 var(--s2); padding-left: 8px; }
+.aviso-red { background: color-mix(in srgb, var(--neg) 12%, transparent); color: var(--ink); border-radius: 8px; padding: 8px 12px; font-size: 13px; margin-bottom: 12px; }
+.vacio { color: var(--ink-2); text-align: center; padding: 8px 0; }
+.vacio p { margin: 6px 0; }
+.boton { display: inline-block; margin-top: 8px; padding: 6px 14px; border-radius: 999px; border: 1px solid var(--axis); text-decoration: none; color: var(--ink); background: var(--surface); }
+#acceso { min-height: 100vh; display: grid; place-items: center; padding: 16px; }
+#acceso form { width: 100%; max-width: 320px; background: var(--surface); box-shadow: 0 0 0 1px var(--ring);
+  border-radius: 12px; padding: 24px; display: grid; gap: 12px; }
+#acceso h1 { font-size: 18px; margin: 0; }
+#acceso input, #acceso button { font: inherit; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--axis); background: var(--page); color: var(--ink); }
+#acceso button { background: var(--s1); border-color: var(--s1); color: #fff; font-weight: 600; cursor: pointer; }
+#acceso .error { color: var(--neg); font-size: 13px; margin: 0; min-height: 1em; }
+</style>
+</head>
+<body>
+<div id="acceso">
+  <form>
+    <h1>Partido en directo</h1>
+    <input type="password" id="clave" placeholder="Contraseña" autocomplete="current-password" required autofocus>
+    <button>Entrar</button>
+    <p class="error" id="errorClave"></p>
+  </form>
+</div>
+<main hidden>
+  <div class="barra"><a href="./">← Estadísticas</a><span id="actualizado"></span></div>
+  <div id="red" class="aviso-red" hidden>No se puede conectar con la federación; vuelvo a intentarlo en unos segundos.</div>
+  <div class="card" id="cabecera"></div>
+  <div id="vivo" hidden>
+    <h2>Parciales</h2>
+    <div class="card scroll"><table id="cuartos"></table></div>
+    <h2>Nuestras jugadoras</h2>
+    <div class="card scroll"><table id="nuestras"></table></div>
+    <h2>Últimas jugadas</h2>
+    <div class="card"><ul class="jugadas" id="jugadas"></ul></div>
+    <h2>Rival</h2>
+    <div class="card scroll"><table id="rivales"></table></div>
+  </div>
+</main>
+
+<script>
+// Datos en vivo: los mismos servicios públicos que usa la web de la federación para su directo.
+// Esta página no guarda ningún dato; solo lleva cifrado qué equipo y qué jugadoras se siguen.
+const STREAMING = 'https://streaming.optimalwayconsulting.com/fbcyl/streaming';
+const CADA_VIVO = 15000, CADA_CALENDARIO = 60000;
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+const titleCase = s => (s || '').toLowerCase().replace(/(^|\s)\S/g, c => c.toUpperCase());
+const normaliza = s => (s || '').normalize('NFKD').replace(/[^\x00-\x7f]/g, '').toUpperCase().split(/\s+/).filter(Boolean).join(' ');
+const corto = s => titleCase(s).split(' ').slice(0, 2).join(' ');
+const iniciales = s => s.split(' ').slice(0, 2).map(w => w[0]).join('');
+const dos = n => String(n).padStart(2, '0');
+const nombreCuarto = n => n <= 4 ? `${n}º cuarto` : `Prórroga ${n - 4}`;
+const fechaDe = s => new Date((s || '').replace(' ', 'T'));
+const conHora = d => d.getHours() || d.getMinutes();
+const cuando = d => d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' }) +
+  (conHora(d) ? ' a las ' + d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : ' (hora por confirmar)');
+
+// Las jugadas del directo vienen en catalán
+const TRADUCCION = [[/^Cistella de (\d)/, 'Canasta de $1'], [/^Intent fallat de (\d)/, 'Fallo de $1'], [/^Entra al camp/, 'Entra'],
+  [/^Surt del camp/, 'Sale'], [/^Salt guanyat/, 'Salto ganado'], [/^Salt perdut/, 'Salto perdido'], [/^Final de període/, 'Fin del cuarto'],
+  [/^Temps mort/, 'Tiempo muerto'], [/tirs lliures/, 'tiros libres'], [/tir lliure/, 'tiro libre'], [/Falta en atac/, 'Falta en ataque'],
+  [/^Pèrdua/, 'Pérdida'], [/^Assistència/, 'Asistencia'], [/^Rebot ofensiu/, 'Rebote ofensivo'], [/^Rebot defensiu/, 'Rebote defensivo'],
+  [/^Recuperació/, 'Recuperación'], [/^Falta rebuda/, 'Falta recibida'], [/Desqualificant/, 'Descalificante'], [/sense falta d'equip/, 'sin falta de equipo'],
+  [/Antiesportiva/, 'Antideportiva'], [/Tècnica/, 'Técnica'], [/^Tap/, 'Tapón']];
+const traduce = m => TRADUCCION.reduce((s, [a, b]) => s.replace(a, b), m || '');
+const esEntrada = m => /^(Entra al camp|Entra al campo)/.test(m), esSalida = m => /^(Surt del camp|Sale del campo)/.test(m);
+const esFin = m => /^(Final de període|Fin de período)/.test(m);
+const esFaltaEquipo = m => /falta/i.test(m) && !/rebuda|recibida|sense falta|sin falta/i.test(m);
+
+async function json(url) {
+  const r = await fetch(url, { cache: 'no-store' });
+  if (!r.ok) throw new Error(r.status);
+  return r.json();
+}
+// El calendario llega en base64
+async function calendario(CONF) {
+  const partidos = [];
+  for (const grupo of CONF.grupos) {
+    const r = await fetch(`${CONF.esb}/FCBQWeb/getAllGamesByGrupWithMatchRecords/${grupo}`, { cache: 'no-store' });
+    const texto = new TextDecoder().decode(Uint8Array.from(atob((await r.text()).trim()), c => c.charCodeAt(0)));
+    for (const [num, jornada] of Object.entries(JSON.parse(texto).messageData.rounds))
+      for (const m of Object.values(jornada.matches))
+        if ([+m.idLocalTeam, +m.idVisitorTeam].includes(CONF.equipoId)) partidos.push({ ...m, grupo, jornada: +num });
+  }
+  return partidos.sort((a, b) => (a.matchDay || '').localeCompare(b.matchDay || ''));
+}
+
+function arrancar(CONF) {
+  const seguidas = new Set(CONF.seguidas);
+  // directo: datos en vivo de ahora; ultimo: los últimos que hubo (al acabar, el directo deja de responder
+  // y el acta oficial tarda unos minutos: mientras tanto se enseña lo último que se vio)
+  let partidos = [], directo = null, ultimo = null, ultimoCalendario = 0, fallos = 0;
+
+  // Partido que interesa: el de hoy (el primero sin acabar) o, si no hay, el próximo
+  function elegir() {
+    const hoy = new Date().toDateString();
+    const deHoy = partidos.filter(m => fechaDe(m.matchDay).toDateString() === hoy);
+    return deHoy.find(m => m.localScore == null) || deHoy.at(-1) || null;
+  }
+  const proximo = () => partidos.find(m => m.localScore == null && fechaDe(m.matchDay) > new Date());
+  const anterior = () => partidos.filter(m => m.localScore != null).at(-1);
+
+  async function ciclo() {
+    try {
+      if (Date.now() - ultimoCalendario > CADA_CALENDARIO || !partidos.length) {
+        partidos = await calendario(CONF); ultimoCalendario = Date.now();
+      }
+      const m = elegir();
+      directo = null;
+      if (m?.adGameId && m.localScore == null) {
+        const d = await json(`${STREAMING}/match-id/${m.adGameId}`);
+        if (d?.teams?.length) directo = ultimo = { id: m.adGameId, d };
+      }
+      fallos = 0;
+      document.getElementById('red').hidden = true;
+      pintar(m);
+    } catch (e) {
+      console.error(e);
+      document.getElementById('red').hidden = ++fallos < 2;
+    }
+    document.getElementById('actualizado').textContent = 'Actualizado ' + new Date().toLocaleTimeString('es-ES');
+    clearTimeout(ciclo.t);
+    ciclo.t = setTimeout(ciclo, directo ? CADA_VIVO : CADA_CALENDARIO / 2);
+  }
+  // Al volver a la pestaña (p. ej. tras bloquear el móvil), actualiza en el momento
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) ciclo(); });
+
+  const escudo = (logo, nombre) => logo ? `<img src="${esc(logo)}" alt="" referrerpolicy="no-referrer">` : `<span class="ini">${esc(iniciales(titleCase(nombre)))}</span>`;
+  const enlacePanel = m => `./#partido-${m.grupo}-${m.jornada}`;
+
+  function pintar(m) {
+    const cab = document.getElementById('cabecera');
+    const terminado = !directo && m && ultimo?.id === m.adGameId && m.localScore == null;
+    const vivo = directo?.d || (terminado ? ultimo.d : null);
+    document.getElementById('vivo').hidden = !vivo;
+    if (!m) {
+      const p = proximo(), a = anterior();
+      cab.innerHTML = `<div class="vacio"><p class="estado">Hoy no hay partido</p>
+        ${p ? `<p>Próximo: <b>J${p.jornada}</b> · ${esc(titleCase(+p.idLocalTeam === CONF.equipoId ? p.nameVisitorTeam : p.nameLocalTeam))}
+          (${+p.idLocalTeam === CONF.equipoId ? 'en casa' : 'fuera'}), ${cuando(fechaDe(p.matchDay))}.</p>` : ''}
+        ${a ? `<p>Último: J${a.jornada} · ${esc(titleCase(a.nameLocalTeam))} ${a.localScore}–${a.visitorScore} ${esc(titleCase(a.nameVisitorTeam))}</p>
+          <a class="boton" href="${enlacePanel(a)}">Ver el último partido</a>` : ''}</div>`;
+      document.title = 'Directo';
+      return;
+    }
+    const local = +m.idLocalTeam === CONF.equipoId;
+    const equipos = vivo ? Object.fromEntries(vivo.teams.map(t => [t.teamIdExtern === +m.idLocalTeam ? 'L' : 'V', t])) : {};
+    const ptsL = vivo ? equipos.L?.data?.score ?? 0 : m.localScore, ptsV = vivo ? equipos.V?.data?.score ?? 0 : m.visitorScore;
+    const jugadas = vivo ? [...(vivo.moves || [])].sort((a, b) => (a.timestamp || '').localeCompare(b.timestamp || '')) : [];
+    const ultima = jugadas.at(-1);
+
+    // Estado y reloj
+    let estado, reloj = '';
+    if (terminado) {
+      estado = '<span class="estado">Terminado</span>';
+      reloj = 'El acta oficial llega unos minutos después; entonces se actualiza también el panel.';
+    } else if (vivo) {
+      const periodo = vivo.period || ultima?.period || 1;
+      estado = '<span class="estado vivo">En directo</span>';
+      reloj = esFin(ultima?.move || '') ? `Final del ${nombreCuarto(periodo)}`
+        : vivo.matchTime ? `${nombreCuarto(periodo)} · ${dos(vivo.matchTime.minute)}:${dos(vivo.matchTime.second)}` : nombreCuarto(periodo);
+    } else if (m.localScore != null) {
+      estado = '<span class="estado">Final</span>';
+      reloj = `<a href="${enlacePanel(m)}">Ver el acta completa en el panel</a>`;
+    } else if (fechaDe(m.matchDay) > new Date()) {
+      estado = '<span class="estado">Hoy</span>';
+      reloj = `Empieza ${conHora(fechaDe(m.matchDay)) ? 'a las ' + fechaDe(m.matchDay).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : 'hoy (hora por confirmar)'}. Esta página se actualiza sola.`;
+    } else {
+      estado = '<span class="estado">Hoy</span>';
+      reloj = m.adGameId ? 'Esperando datos del partido. Esta página se actualiza sola.'
+        : 'La mesa aún no ha abierto el acta digital. Esta página se actualiza sola.';
+    }
+    // Faltas de equipo en el cuarto actual (a partir de la 5ª, tiros libres)
+    let faltas = '';
+    if (vivo && !terminado) {
+      const periodo = vivo.period || 1;
+      const deEquipo = t => jugadas.filter(j => j.idTeam === t?.teamIdIntern && j.period === periodo && esFaltaEquipo(j.move || '')).length;
+      const f = [deEquipo(equipos.L), deEquipo(equipos.V)].map(n => `<b class="${n >= 4 ? 'aviso' : ''}">${n}</b>`);
+      faltas = `<div class="faltas-eq"><span>Faltas de equipo: ${f[0]}</span><span>${nombreCuarto(periodo)}</span><span>Faltas de equipo: ${f[1]}</span></div>`;
+    }
+    cab.innerHTML = `${estado} <span style="color:var(--muted);font-size:13px">· J${m.jornada} · ${esc(titleCase(m.nameField || ''))}</span>
+      <div class="marcador">
+        <div class="equipo ${local ? 'nuestro' : ''}">${escudo(m.logoLocal, m.nameLocalTeam)}<div class="nom">${esc(titleCase(m.nameLocalTeam))}</div></div>
+        <div><div class="tanteo">${ptsL ?? '–'}–${ptsV ?? '–'}</div><div class="reloj">${reloj}</div></div>
+        <div class="equipo ${local ? '' : 'nuestro'}">${escudo(m.logoVisitant, m.nameVisitorTeam)}<div class="nom">${esc(titleCase(m.nameVisitorTeam))}</div></div>
+      </div>${faltas}`;
+    document.title = vivo && !terminado ? `${ptsL}–${ptsV} · Directo` : 'Directo';
+    if (!vivo) return;
+
+    // Parciales
+    const nq = Math.max(4, ...vivo.teams.map(t => (t.periods || []).length));
+    const cuartos = t => Array.from({ length: nq }, (_, k) => t?.periods?.[k]?.score ?? '');
+    document.getElementById('cuartos').innerHTML =
+      `<tr><th class="i">Equipo</th>${Array.from({ length: nq }, (_, k) => `<th>${k < 4 ? k + 1 + 'º' : 'P' + (k - 3)}</th>`).join('')}<th>Total</th></tr>` +
+      [['L', m.nameLocalTeam, ptsL], ['V', m.nameVisitorTeam, ptsV]].map(([k, n, pts]) =>
+        `<tr><td class="i">${(k === 'L') === local ? `<b>${esc(titleCase(n))}</b>` : esc(titleCase(n))}</td>${cuartos(equipos[k]).map(v => `<td>${v}</td>`).join('')}<td><b>${pts}</b></td></tr>`).join('');
+
+    // Quién está en pista: titulares (las que actúan o salen antes de su primera entrada) y luego entradas y salidas
+    const enPista = new Map();
+    for (const j of jugadas) {
+      const n = normaliza(j.actorName); if (!n) continue;
+      if (!enPista.has(n)) enPista.set(n, !esEntrada(j.move || ''));
+      if (esEntrada(j.move || '')) enPista.set(n, true); else if (esSalida(j.move || '')) enPista.set(n, false);
+    }
+    const tiro = (d, t) => `${d[`shotsOf${t}Successful`] || 0}/${d[`shotsOf${t}Attempted`] || 0}`;
+    const fCelda = f => f >= 5 ? `<span class="f5">${f}</span>` : f >= 4 ? `<span class="f4">${f}</span>` : f;
+    const fila = (j, nuestra) => {
+      const d = j.data || {}, pista = enPista.get(normaliza(j.name)), nombre = esc(corto(j.name));
+      return `<tr class="${pista ? '' : 'banco'}"><td class="pista">${pista ? '<span class="punto" title="En pista"></span>' : ''}</td>
+        <td>${esc(j.dorsal ?? '')}</td><td class="i">${nuestra && seguidas.has(normaliza(j.name)) ? `<b>${nombre}</b>` : nombre}</td>
+        <td><b>${d.score || 0}</b></td><td>${fCelda(d.faults || 0)}</td><td>${j.timePlayed || 0}</td>
+        ${nuestra ? `<td>${tiro(d, 'Two')}</td><td>${tiro(d, 'Three')}</td><td>${tiro(d, 'One')}</td>` : ''}</tr>`;
+    };
+    const orden = (a, b) => (enPista.get(normaliza(b.name)) ? 1 : 0) - (enPista.get(normaliza(a.name)) ? 1 : 0) || (b.data?.score || 0) - (a.data?.score || 0);
+    const nuestro = equipos[local ? 'L' : 'V'], rival = equipos[local ? 'V' : 'L'];
+    document.getElementById('nuestras').innerHTML =
+      `<tr><th></th><th>#</th><th class="i">Jugadora</th><th>Pts</th><th>Faltas</th><th>Min</th><th>T2</th><th>T3</th><th>TL</th></tr>` +
+      [...(nuestro?.players || [])].sort(orden).map(j => fila(j, true)).join('');
+    document.getElementById('rivales').innerHTML =
+      `<tr><th></th><th>#</th><th class="i">Jugadora</th><th>Pts</th><th>Faltas</th><th>Min</th></tr>` +
+      [...(rival?.players || [])].sort(orden).map(j => fila(j, false)).join('');
+
+    // Últimas jugadas (sin entradas ni salidas, que llenan la lista)
+    const nuestroId = nuestro?.teamIdIntern;
+    document.getElementById('jugadas').innerHTML = jugadas.filter(j => !esEntrada(j.move || '') && !esSalida(j.move || ''))
+      .slice(-15).reverse().map(j => {
+        const quien = j.actorName ? `${j.actorShirtNumber ? '#' + esc(j.actorShirtNumber) + ' ' : ''}${esc(corto(j.actorName))} · ` : '';
+        return `<li class="${j.idTeam === nuestroId ? 'nuestra' : j.idTeam ? 'rival' : ''}">
+          <span class="t">${j.period <= 4 ? j.period + 'º' : 'P' + (j.period - 4)} ${dos(j.min ?? 0)}:${dos(j.sec ?? 0)}</span>
+          <span>${quien}${esc(traduce(j.move))}</span><span class="s">${esc(j.score || '')}</span></li>`;
+      }).join('') || '<li><span></span><span class="t">Todavía no hay jugadas.</span><span></span></li>';
+  }
+
+  ciclo();
+}
+</script>
+<script>
+// Misma contraseña que el panel (y la misma clave guardada en la pestaña).
+const CIFRADO = /*__CIFRADO__*/null;
+const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+async function abrir(clave) {
+  const datos = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(CIFRADO.iv) }, clave, b64(CIFRADO.datos));
+  document.getElementById('acceso').remove();
+  document.querySelector('main').hidden = false;
+  arrancar(JSON.parse(new TextDecoder().decode(datos)));
+}
+async function derivar(password) {
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name: 'PBKDF2', hash: 'SHA-256', salt: b64(CIFRADO.sal), iterations: CIFRADO.iteraciones },
+    base, { name: 'AES-GCM', length: 256 }, true, ['decrypt']);
+}
+(async () => {
+  try {
+    const guardada = sessionStorage.getItem('clave');
+    if (guardada) await abrir(await crypto.subtle.importKey('raw', b64(guardada), 'AES-GCM', true, ['decrypt']));
+  } catch { try { sessionStorage.removeItem('clave'); } catch {} }
+})();
+document.querySelector('#acceso form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const error = document.getElementById('errorClave');
+  error.textContent = '';
+  try {
+    const clave = await derivar(document.getElementById('clave').value);
+    await abrir(clave);
+    try { sessionStorage.setItem('clave', btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.exportKey('raw', clave))))); } catch {}
+  } catch { error.textContent = 'Contraseña incorrecta'; }
+});
+</script>
+</body>
+</html>
