@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Actualización en directo durante los partidos del equipo.
 
-Busca en el calendario los partidos de hoy y, mientras dura cada uno (hora de inicio + 1 h 40 min),
+Busca en el calendario los partidos de hoy y, mientras dura cada uno (hora de inicio + 2 h 30 min),
 lanza el workflow de publicación cada 2 minutos en modo directo (solo descarga ese partido;
 el resto lo toma de la página ya publicada, ver actualizar.solo_partido_en_curso). Un trabajo de GitHub Actions no puede durar más
 de 6 horas, así que si falta mucho para el partido espera un rato y se vuelve a lanzar a sí mismo.
@@ -20,7 +20,7 @@ import actualizar  # noqa: E402
 
 DURACION = actualizar.DURACION                # duración estimada de un partido
 INTERVALO = 120                             # segundos entre actualizaciones durante el partido
-ESPERA_MAX = timedelta(hours=4)             # espera + partido debe caber en las 6 h de un trabajo
+ESPERA_MAX = timedelta(hours=3, minutes=15) # espera + partido debe caber en las 6 h de un trabajo
 
 
 def partidos_pendientes_hoy(ahora):
