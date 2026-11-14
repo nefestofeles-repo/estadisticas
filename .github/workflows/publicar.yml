@@ -56,6 +56,9 @@ jobs:
     concurrency:
       group: pages
       cancel-in-progress: false
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     environment:
       name: github-pages
       url: ${{ steps.despliegue.outputs.page_url }}
@@ -73,6 +76,11 @@ jobs:
         run: |
           python3 actualizar.py
           mkdir -p web && cp informe.html web/index.html && cp directo.html web/directo.html
+      - name: Publicar en Cloudflare Pages (protegido con Cloudflare Access)
+        if: env.CLOUDFLARE_API_TOKEN != ''
+        run: |
+          npx --yes wrangler@3 pages project create estadisticas-baloncesto --production-branch=main 2>/dev/null || true
+          npx --yes wrangler@3 pages deploy web --project-name=estadisticas-baloncesto --branch=main --commit-dirty=true
       - id: artefacto
         uses: actions/upload-pages-artifact@v3
         with:
