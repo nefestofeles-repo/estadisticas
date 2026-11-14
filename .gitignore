@@ -6,3 +6,4 @@ __pycache__/
 directo.html
 acceso/config.js
 .wrangler/
+node_modules/
