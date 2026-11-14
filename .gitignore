@@ -4,3 +4,5 @@ jugadoras.txt
 informe.html
 __pycache__/
 directo.html
+acceso/config.js
+.wrangler/

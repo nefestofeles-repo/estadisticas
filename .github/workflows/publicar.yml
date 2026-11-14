@@ -72,11 +72,13 @@ jobs:
         env:
           INFORME_CLAVE: ${{ secrets.INFORME_CLAVE }}
           JUGADORAS: ${{ secrets.JUGADORAS }}
+          AUTORIZADOS: ${{ secrets.AUTORIZADOS }}           # correos que pueden entrar con Google en Cloudflare
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           TZ: Europe/Madrid
         run: |
           python3 actualizar.py
           mkdir -p web && cp informe.html web/index.html && cp directo.html web/directo.html
-      - name: Publicar en Cloudflare Pages (protegido con Cloudflare Access)
+      - name: Publicar en Cloudflare Pages (con inicio de sesión de Google, functions/_middleware.js)
         if: env.CLOUDFLARE_API_TOKEN != ''
         run: |
           npx --yes wrangler@3 pages project create estadisticas-baloncesto --production-branch=main 2>/dev/null || true

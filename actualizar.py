@@ -9,6 +9,7 @@ import base64
 import functools
 import getpass
 import hashlib
+import hmac
 import json
 import os
 import re
@@ -470,6 +471,20 @@ def cifra(datos, clave, iteraciones=600_000):
             "datos": b64(AESGCM(llave).encrypt(iv, json.dumps(datos, ensure_ascii=False).encode(), None))}
 
 
+def escribe_acceso(clave):
+    """Configuración del inicio de sesión con Google en Cloudflare Pages (functions/_middleware.js).
+    Va dentro del código de la función, no en la web: la clave que descifra los datos solo se entrega
+    a quien entra con una cuenta de AUTORIZADOS (correos separados por comas, espacios o líneas)."""
+    sal = hashlib.sha256(f"estadisticas-{EQUIPO_ID}".encode()).digest()[:16]   # la misma que en cifra()
+    llave = PBKDF2HMAC(hashes.SHA256(), 32, sal, 600_000).derive(clave.encode())
+    b64 = lambda b: base64.b64encode(b).decode()
+    config = {"clave": b64(llave), "sesion": b64(hmac.new(llave, b"sesion", "sha256").digest()),
+              "autorizados": sorted({c.lower() for c in re.split(r"[\s,;]+", os.environ.get("AUTORIZADOS", "")) if "@" in c}),
+              "googleClientId": os.environ.get("GOOGLE_CLIENT_ID", "")}
+    (BASE / "acceso").mkdir(exist_ok=True)
+    (BASE / "acceso" / "config.js").write_text(f"export default {json.dumps(config)};\n", encoding="utf-8")
+
+
 def pide_clave():
     clave = os.environ.get("INFORME_CLAVE")
     while not clave:
@@ -548,6 +563,7 @@ def main():
     plantilla = (BASE / "plantilla_directo.html").read_text(encoding="utf-8")
     html = plantilla.replace("/*__CIFRADO__*/null", json.dumps(cifra(config, clave)))
     (BASE / "directo.html").write_text(html, encoding="utf-8")
+    escribe_acceso(clave)
     print(f"\nInforme generado: {BASE / 'informe.html'}")
 
 
