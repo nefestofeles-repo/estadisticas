@@ -8,9 +8,7 @@ on:
     - cron: "7,37 * * * *"    # cada media hora: solo sigue si se acaba de cerrar el acta de un partido del equipo
 
 permissions:
-  contents: write             # para el commit suelto que identifica cada despliegue (no mueve ninguna rama)
-  pages: write
-  id-token: write
+  contents: read
 
 jobs:
   hora:
@@ -56,12 +54,9 @@ jobs:
     concurrency:
       group: pages
       cancel-in-progress: false
-    env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     environment:
-      name: github-pages
-      url: ${{ steps.despliegue.outputs.page_url }}
+      name: cloudflare-pages
+      url: https://estadisticas-baloncesto.pages.dev
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -72,55 +67,18 @@ jobs:
         env:
           INFORME_CLAVE: ${{ secrets.INFORME_CLAVE }}
           JUGADORAS: ${{ secrets.JUGADORAS }}
-          AUTORIZADOS: ${{ secrets.AUTORIZADOS }}           # correos que pueden entrar con Google en Cloudflare
+          AUTORIZADOS: ${{ secrets.AUTORIZADOS }}           # correos que pueden entrar con Google
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           TZ: Europe/Madrid
         run: |
           python3 actualizar.py
           mkdir -p web && cp informe.html web/index.html && cp directo.html web/directo.html
       - name: Publicar en Cloudflare Pages (con inicio de sesión de Google, functions/_middleware.js)
-        if: env.CLOUDFLARE_API_TOKEN != ''
-        run: |
-          npx --yes wrangler@3 pages project create estadisticas-baloncesto --production-branch=main 2>/dev/null || true
-          npx --yes wrangler@3 pages deploy web --project-name=estadisticas-baloncesto --branch=main --commit-dirty=true
-      - id: artefacto
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: web
-      - id: despliegue
-        # Lo mismo que actions/deploy-pages, pero con una versión única por ejecución: deploy-pages usa
-        # el commit como versión y, tras muchos despliegues del mismo commit (directo cada 30 s),
-        # GitHub Pages los da por buenos pero deja de aplicarlos
         env:
-          GH_TOKEN: ${{ github.token }}
-          ARTEFACTO: ${{ steps.artefacto.outputs.artifact_id }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@3 pages deploy web --project-name=estadisticas-baloncesto --branch=main --commit-dirty=true
+      - name: Comprobar que la web sigue cerrada sin iniciar sesión
         run: |
-          # La versión tiene que ser un commit del repositorio: uno suelto con el mismo contenido
-          arbol=$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$GITHUB_SHA" -q .tree.sha)
-          version=$(gh api "repos/$GITHUB_REPOSITORY/git/commits" -f message="Publicación $GITHUB_RUN_ID" \
-                      -f tree="$arbol" -f "parents[]=$GITHUB_SHA" -q .sha)
-          oidc=$(curl -sf -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL" | jq -r .value)
-          jq -n --argjson a "$ARTEFACTO" --arg v "$version" --arg o "$oidc" \
-             '{artifact_id: $a, pages_build_version: $v, oidc_token: $o}' \
-            | gh api -X POST "repos/$GITHUB_REPOSITORY/pages/deployments" --input - > despliegue.json
-          estado_url=$(jq -r .status_url despliegue.json)
-          for i in $(seq 60); do
-            estado=$(gh api "$estado_url" -q .status)
-            echo "Despliegue $version: $estado"
-            case "$estado" in
-              succeed) echo "page_url=$(gh api "repos/$GITHUB_REPOSITORY/pages" -q .html_url)" >> "$GITHUB_OUTPUT"; exit 0 ;;
-              deployment_failed|deployment_content_failed|deployment_cancelled|deployment_lost) exit 1 ;;
-            esac
-            sleep 5
-          done
-          exit 1
-      - name: Comprobar que la página publicada es la nueva
-        # GitHub Pages puede dar el despliegue por bueno y seguir sirviendo la versión anterior
-        run: |
-          esperado=$(sha256sum web/index.html | cut -d' ' -f1)
-          for i in $(seq 12); do
-            [ "$(curl -s "${{ steps.despliegue.outputs.page_url }}?t=$(date +%s%N)" | sha256sum | cut -d' ' -f1)" = "$esperado" ] && exit 0
-            sleep 10
-          done
-          echo "::error::GitHub Pages sigue sirviendo la versión anterior de la página"
-          exit 1
+          codigo=$(curl -s -o /dev/null -w "%{http_code}" "https://estadisticas-baloncesto.pages.dev/?t=$(date +%s)")
+          [ "$codigo" = 401 ] || { echo "::error::La web responde $codigo sin iniciar sesión (se esperaba 401)"; exit 1; }

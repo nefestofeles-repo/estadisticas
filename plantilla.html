@@ -136,6 +136,8 @@ footer { margin-top: 32px; font-size: 12px; color: var(--muted); }
   box-shadow: 0 0 0 1px var(--ring), 0 4px 16px rgba(0,0,0,.12); border-radius: 8px;
   padding: 6px 10px; font-size: 12px; display: none; z-index: 10; }
 #acceso { min-height: 100vh; display: grid; place-items: center; padding: 16px; }
+/* Al entrar con Google (Cloudflare) la clave ya viene en la página: la contraseña no llega a verse */
+.con-clave #acceso { visibility: hidden; }
 #acceso form { width: 100%; max-width: 320px; background: var(--surface); box-shadow: 0 0 0 1px var(--ring);
   border-radius: 12px; padding: 24px; display: grid; gap: 12px; }
 #acceso h1 { font-size: 18px; margin: 0; }
@@ -1206,7 +1208,10 @@ async function derivar(password) {
   try {
     const guardada = sessionStorage.getItem('clave');
     if (guardada) await abrir(await crypto.subtle.importKey('raw', b64(guardada), 'AES-GCM', true, ['decrypt']));
-  } catch { try { sessionStorage.removeItem('clave'); } catch {} }
+  } catch {
+    document.documentElement.classList.remove('con-clave');
+    try { sessionStorage.removeItem('clave'); } catch {}
+  }
 })();
 document.querySelector('#acceso form').addEventListener('submit', async e => {
   e.preventDefault();

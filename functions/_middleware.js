@@ -36,7 +36,8 @@ export async function onRequest({ request, next }) {
   cabeceras.set('Cache-Control', 'private, no-store');
   const protegida = new Response(respuesta.body, { status: respuesta.status, statusText: respuesta.statusText, headers: cabeceras });
   if (respuesta.status !== 200 || !(cabeceras.get('Content-Type') || '').includes('text/html')) return protegida;
-  const clave = `<script>try{sessionStorage.setItem('clave',${JSON.stringify(CONFIG.clave)})}catch(e){}</script>`;
+  const clave = `<script>try{sessionStorage.setItem('clave',${JSON.stringify(CONFIG.clave)});`
+              + `document.documentElement.classList.add('con-clave')}catch(e){}</script>`;
   return new HTMLRewriter().on('head', { element: e => e.prepend(clave, { html: true }) }).transform(protegida);
 }
 
