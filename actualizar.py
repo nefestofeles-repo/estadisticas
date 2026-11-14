@@ -474,12 +474,16 @@ def cifra(datos, clave, iteraciones=600_000):
 def escribe_acceso(clave):
     """Configuración del inicio de sesión con Google en Cloudflare Pages (functions/_middleware.js).
     Va dentro del código de la función, no en la web: la clave que descifra los datos solo se entrega
-    a quien entra con una cuenta de AUTORIZADOS (correos separados por comas, espacios o líneas)."""
+    a quien entra con una cuenta de AUTORIZADOS (correos separados por comas, espacios o líneas) o con
+    un enlace de INVITACIONES (una por línea, "nombre = código"; de los códigos solo se guarda el sha256)."""
     sal = hashlib.sha256(f"estadisticas-{EQUIPO_ID}".encode()).digest()[:16]   # la misma que en cifra()
     llave = PBKDF2HMAC(hashes.SHA256(), 32, sal, 600_000).derive(clave.encode())
     b64 = lambda b: base64.b64encode(b).decode()
     config = {"clave": b64(llave), "sesion": b64(hmac.new(llave, b"sesion", "sha256").digest()),
               "autorizados": sorted({c.lower() for c in re.split(r"[\s,;]+", os.environ.get("AUTORIZADOS", "")) if "@" in c}),
+              "invitaciones": {hashlib.sha256(codigo.strip().encode()).hexdigest(): nombre.strip()
+                               for nombre, _, codigo in (l.partition("=") for l in os.environ.get("INVITACIONES", "").splitlines())
+                               if nombre.strip() and codigo.strip()},
               "googleClientId": os.environ.get("GOOGLE_CLIENT_ID", "")}
     (BASE / "acceso").mkdir(exist_ok=True)
     (BASE / "acceso" / "config.js").write_text(f"export default {json.dumps(config)};\n", encoding="utf-8")

@@ -14,6 +14,20 @@ const leeJson = b64 => JSON.parse(new TextDecoder().decode(aBytes(b64)));
 
 export const autorizado = (config, correo) => !!correo && config.autorizados.includes(correo.toLowerCase());
 
+// Enlaces de invitación para quien no tiene cuenta de Google: la sesión va a nombre de "invitación:<nombre>"
+// y deja de valer en cuanto esa invitación se quita de la lista (config.invitaciones: sha256 del código → nombre).
+const INVITACION = 'invitación:';
+export const sesionDeInvitado = nombre => INVITACION + nombre;
+const vigente = (config, quien) => quien.startsWith(INVITACION)
+  ? Object.values(config.invitaciones || {}).includes(quien.slice(INVITACION.length))
+  : autorizado(config, quien);
+
+export async function invitado(config, codigo) {
+  const resumen = await crypto.subtle.digest('SHA-256', codifica.encode(codigo || ''));
+  const hex = [...new Uint8Array(resumen)].map(b => b.toString(16).padStart(2, '0')).join('');
+  return Object.hasOwn(config.invitaciones || {}, hex) ? config.invitaciones[hex] : null;
+}
+
 // Devuelve el correo si el token de Google es válido y es para nuestra aplicación; si no, null.
 export async function correoDeGoogle(config, token, ahora = Date.now()) {
   try {
@@ -41,7 +55,7 @@ export async function creaSesion(config, correo, ahora = Date.now()) {
   return `${datos}.${aB64(firma)}`;
 }
 
-// Correo de la sesión si la cookie es nuestra, no ha caducado y el correo sigue autorizado; si no, null.
+// Correo (o invitación) de la sesión si la cookie es nuestra, no ha caducado y sigue autorizado; si no, null.
 export async function correoDeSesion(config, cookies, ahora = Date.now()) {
   try {
     const valor = (cookies || '').split(/;\s*/).find(c => c.startsWith(`${COOKIE}=`))?.slice(COOKIE.length + 1);
@@ -49,6 +63,6 @@ export async function correoDeSesion(config, cookies, ahora = Date.now()) {
     const [datos, firma] = valor.split('.');
     if (!await crypto.subtle.verify('HMAC', await llaveSesion(config), aBytes(firma), codifica.encode(datos))) return null;
     const { c, e } = leeJson(datos);
-    return e > ahora && autorizado(config, c) ? c : null;
+    return e > ahora && vigente(config, c) ? c : null;
   } catch { return null; }
 }

@@ -68,6 +68,7 @@ jobs:
           INFORME_CLAVE: ${{ secrets.INFORME_CLAVE }}
           JUGADORAS: ${{ secrets.JUGADORAS }}
           AUTORIZADOS: ${{ secrets.AUTORIZADOS }}           # correos que pueden entrar con Google
+          INVITACIONES: ${{ secrets.INVITACIONES }}         # enlaces de invitación ("nombre = código" por línea)
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           TZ: Europe/Madrid
         run: |
