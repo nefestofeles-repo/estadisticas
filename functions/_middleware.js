@@ -3,7 +3,7 @@
 // (la guardan en sessionStorage, como si hubieran escrito la contraseña), así que no tiene que escribirla.
 // Quien no tiene cuenta de Google entra con un enlace de invitación personal (/_acceso/invitacion/<código>).
 import CONFIG from '../acceso/config.js';   // lo genera actualizar.py en cada publicación; nunca va al repositorio
-import { COOKIE, DIAS, autorizado, correoDeGoogle, creaSesion, correoDeSesion, invitado, sesionDeInvitado } from '../acceso/google.js';
+import { COOKIE, DIAS, autorizado, correoDeGoogle, creaSesion, leeSesion, invitado, sesionDeInvitado } from '../acceso/google.js';
 
 const ENTRAR = '/_acceso/google';
 const SALIR = '/_acceso/salir';
@@ -11,20 +11,20 @@ const INVITACION = '/_acceso/invitacion/';
 const json = (datos, status = 200, cabeceras = {}) =>
   new Response(JSON.stringify(datos), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...cabeceras } });
 const html = (texto, status) => new Response(texto, { status, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } });
-const conSesion = async quien =>
-  ({ 'Set-Cookie': `${COOKIE}=${await creaSesion(CONFIG, quien)}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=${DIAS * 86400}` });
+const conSesion = async (quien, nombre) =>
+  ({ 'Set-Cookie': `${COOKIE}=${await creaSesion(CONFIG, quien, nombre)}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=${DIAS * 86400}` });
 
-export async function onRequest({ request, next }) {
+export async function onRequest({ request, next, data }) {
   const url = new URL(request.url);
 
   if (url.pathname === ENTRAR && request.method === 'POST') {
     // Solo desde nuestra propia pantalla de entrada
     if (request.headers.get('Origin') !== url.origin) return json({ error: 'Origen no permitido' }, 403);
     const { credential } = await request.json().catch(() => ({}));
-    const correo = await correoDeGoogle(CONFIG, credential || '');
-    if (!correo) return json({ error: 'Google no ha confirmado la cuenta. Vuelve a intentarlo.' }, 401);
-    if (!autorizado(CONFIG, correo)) return json({ error: `La cuenta ${correo} no tiene acceso.` }, 403);
-    return json({ ok: true }, 200, await conSesion(correo));
+    const cuenta = await correoDeGoogle(CONFIG, credential || '');
+    if (!cuenta) return json({ error: 'Google no ha confirmado la cuenta. Vuelve a intentarlo.' }, 401);
+    if (!autorizado(CONFIG, cuenta.correo)) return json({ error: `La cuenta ${cuenta.correo} no tiene acceso.` }, 403);
+    return json({ ok: true }, 200, await conSesion(cuenta.correo, cuenta.nombre));
   }
 
   if (url.pathname.startsWith(INVITACION)) {
@@ -34,18 +34,22 @@ export async function onRequest({ request, next }) {
     if (request.method !== 'POST') return html(pantallaDeEntrada(new URL('/', url), nombre ? 'invitacion' : 'invitacion-caducada'), nombre ? 200 : 404);
     if (request.headers.get('Origin') !== url.origin) return json({ error: 'Origen no permitido' }, 403);
     if (!nombre) return json({ error: 'Este enlace de invitación ya no está activo.' }, 403);
-    return json({ ok: true }, 200, await conSesion(sesionDeInvitado(nombre)));
+    return json({ ok: true }, 200, await conSesion(sesionDeInvitado(nombre), nombre));
   }
 
   if (url.pathname === SALIR) {
     return new Response(null, { status: 303, headers: { Location: '/', 'Set-Cookie': `${COOKIE}=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0` } });
   }
 
-  if (!await correoDeSesion(CONFIG, request.headers.get('Cookie'))) {
+  // Quién es queda en data.usuario para las funciones de /api (mensajes, reacciones y fotos)
+  data.usuario = await leeSesion(CONFIG, request.headers.get('Cookie'));
+  if (!data.usuario) {
+    if (url.pathname.startsWith('/api/')) return json({ error: 'Sesión caducada: recarga la página.' }, 401);
     return html(pantallaDeEntrada(url), 401);
   }
 
   const respuesta = await next();
+  if (url.pathname.startsWith('/api/')) return respuesta;   // la API pone sus propias cabeceras (las fotos se guardan en caché)
   const cabeceras = new Headers(respuesta.headers);
   cabeceras.set('Cache-Control', 'private, no-store');
   const protegida = new Response(respuesta.body, { status: respuesta.status, statusText: respuesta.statusText, headers: cabeceras });

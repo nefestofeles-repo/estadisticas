@@ -152,6 +152,7 @@ footer { margin-top: 32px; font-size: 12px; color: var(--muted); }
   border: 1px solid var(--axis); background: var(--surface); color: var(--ink); text-decoration: none; }
 #acceso .error { color: var(--neg); font-size: 13px; margin: 0; min-height: 1em; }
 </style>
+<script src="social.js"></script>
 </head>
 <body>
 <div id="acceso">
@@ -304,6 +305,13 @@ footer { margin-top: 32px; font-size: 12px; color: var(--muted); }
   <div class="card scroll"><table id="pRival"></table></div>
   </div>
   <p class="empty" id="pSinActa" hidden></p>
+
+  <div id="pSocialBloque" hidden>
+  <h2>Comentarios</h2>
+  <div class="card" id="pSocial"></div>
+  <details id="pGradaBloque" hidden style="margin-top:16px"><summary style="cursor:pointer;color:var(--ink-2)">Chat de grada del partido</summary>
+    <div class="card" id="pGrada" style="margin-top:8px"></div></details>
+  </div>
   </section>
 
   <section id="vRival" hidden>
@@ -481,6 +489,13 @@ document.addEventListener('mousemove', e => {
 });
 
 if (RIVAL) vistaRival(TODO, RIVAL); else if (PARTIDO) vistaPartido(TODO, PARTIDO); else if (EQUIPO) vistaEquipo(TODO); else vistaJugadora(TODO, IDX);
+
+// Mensajes sin ver: comentarios de los partidos en "Equipo" (y en cada partido de la tabla), chat de grada en "Directo"
+if (typeof Social !== 'undefined') Social.contadores([
+  [document.querySelector('#tabs a[href="#equipo"]'), h => h.startsWith('partido:')],
+  [document.querySelector('#tabs a[href="directo.html"]'), h => h.startsWith('grada:')],
+  ...[...document.querySelectorAll('[data-hilo]')].map(el => [el, h => h === el.dataset.hilo]),
+]);
 }
 
 function vistaJugadora(TODO, IDX) {
@@ -826,7 +841,7 @@ document.getElementById('eResultados').innerHTML = jugados.length
     jugados.map(p => `<tr><td><a class="ver" href="${enlacePartido(p)}">J${p.jornada}</a></td><td>${esc(titleCase(p.rival))}</td>
       <td>${fechaCorta(p.fecha)}</td><td style="text-align:left">${p.local ? 'En casa' : 'Fuera'}</td>
       <td>${p.enJuego ? marcador(p) : gana(p) ? `<span class="v-win">${marcador(p)}</span>` : `<span class="v-loss">${marcador(p)}</span>`}</td>
-      <td><a class="ver" href="${enlacePartido(p)}">Ver detalle →</a></td></tr>`).join('')
+      <td><a class="ver" href="${enlacePartido(p)}" data-hilo="partido:${p.grupo}-${p.jornada}">Ver detalle →</a></td></tr>`).join('')
   : '<tr><td class="empty">Aún no se ha jugado ningún partido.</td></tr>';
 
 // --- Parciales por cuarto ---
@@ -1078,6 +1093,15 @@ document.getElementById('pRival').innerHTML = rivales.length
     rivales.map(j => `<tr><td>${esc(j.dorsal ?? '')}</td><td>${nombreConFicha(esc(titleCase(j.nombre)), fbcylJugadora(E.temporada, j, p.idRival))}</td><td>${j.minutos}</td><td><b>${j.puntos}</b></td>
       <td>${tiros(j, 2)}</td><td>${tiros(j, 3)}</td><td>${tiros(j, 1)}</td><td>${j.faltas}</td></tr>`).join('')
   : '<tr><td class="empty">El acta no trae las jugadoras del rival.</td></tr>';
+
+// --- Comentarios y reacciones; debajo, plegado, lo que se escribió en la grada durante el partido ---
+if (typeof Social !== 'undefined') {
+  const hilo = `${p.grupo}-${p.jornada}`;
+  Social.hilo(document.getElementById('pSocial'), `partido:${hilo}`, { cada: 30000, vacio: 'Todavía no hay comentarios.' })
+    .then(h => { document.getElementById('pSocialBloque').hidden = !h; });
+  Social.hilo(document.getElementById('pGrada'), `grada:${hilo}`, { modo: 'chat', soloLeer: true })
+    .then(h => { document.getElementById('pGradaBloque').hidden = !h?.mensajes; });
+}
 
 document.getElementById('pie').textContent = 'Fuente: acta digital del partido de la Federación de Baloncesto de Castilla y León (fbcyl.es).';
 }

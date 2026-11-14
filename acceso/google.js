@@ -28,7 +28,8 @@ export async function invitado(config, codigo) {
   return Object.hasOwn(config.invitaciones || {}, hex) ? config.invitaciones[hex] : null;
 }
 
-// Devuelve el correo si el token de Google es válido y es para nuestra aplicación; si no, null.
+// Devuelve { correo, nombre } si el token de Google es válido y es para nuestra aplicación; si no, null.
+// Nombre para firmar mensajes: el de pila y la inicial del apellido ("Ernesto H.").
 export async function correoDeGoogle(config, token, ahora = Date.now()) {
   try {
     const [cabecera, cuerpo, firma] = token.split('.');
@@ -42,27 +43,33 @@ export async function correoDeGoogle(config, token, ahora = Date.now()) {
     const valida = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', llave, aBytes(firma), codifica.encode(`${cabecera}.${cuerpo}`));
     if (!valida || datos.aud !== config.googleClientId || !EMISORES.includes(datos.iss)
         || datos.exp * 1000 < ahora || !datos.email_verified || !datos.email) return null;
-    return datos.email.toLowerCase();
+    const nombre = [datos.given_name, datos.family_name && datos.family_name[0] + '.'].filter(Boolean).join(' ')
+      || datos.name || datos.email.split('@')[0];
+    return { correo: datos.email.toLowerCase(), nombre };
   } catch { return null; }
 }
 
 const llaveSesion = config =>
   crypto.subtle.importKey('raw', aBytes(config.sesion), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify']);
 
-export async function creaSesion(config, correo, ahora = Date.now()) {
-  const datos = aB64(codifica.encode(JSON.stringify({ c: correo, e: ahora + DIAS * 864e5 })));
+export async function creaSesion(config, correo, nombre, ahora = Date.now()) {
+  const datos = aB64(codifica.encode(JSON.stringify({ c: correo, n: nombre, e: ahora + DIAS * 864e5 })));
   const firma = await crypto.subtle.sign('HMAC', await llaveSesion(config), codifica.encode(datos));
   return `${datos}.${aB64(firma)}`;
 }
 
-// Correo (o invitación) de la sesión si la cookie es nuestra, no ha caducado y sigue autorizado; si no, null.
-export async function correoDeSesion(config, cookies, ahora = Date.now()) {
+// Quién es: { quien (correo o "invitación:<nombre>"), nombre, google, admin } si la cookie es nuestra,
+// no ha caducado y sigue autorizado; si no, null.
+export async function leeSesion(config, cookies, ahora = Date.now()) {
   try {
     const valor = (cookies || '').split(/;\s*/).find(c => c.startsWith(`${COOKIE}=`))?.slice(COOKIE.length + 1);
     if (!valor) return null;
     const [datos, firma] = valor.split('.');
     if (!await crypto.subtle.verify('HMAC', await llaveSesion(config), aBytes(firma), codifica.encode(datos))) return null;
-    const { c, e } = leeJson(datos);
-    return e > ahora && vigente(config, c) ? c : null;
+    const { c, n, e } = leeJson(datos);
+    if (!(e > ahora && vigente(config, c))) return null;
+    const google = !c.startsWith(INVITACION);
+    return { quien: c, nombre: n || (google ? c.split('@')[0] : c.slice(INVITACION.length)), google,
+             admin: google && (config.administradores || []).includes(c) };
   } catch { return null; }
 }

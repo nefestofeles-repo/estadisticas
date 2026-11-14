@@ -8,3 +8,5 @@ acceso/config.js
 .wrangler/
 node_modules/
 invitaciones.txt
+wrangler.toml
+social.toml

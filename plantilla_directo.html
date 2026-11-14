@@ -88,6 +88,7 @@ tr.banco td b { color: var(--ink-2); }
 #acceso button { background: var(--s1); border-color: var(--s1); color: #fff; font-weight: 600; cursor: pointer; }
 #acceso .error { color: var(--neg); font-size: 13px; margin: 0; min-height: 1em; }
 </style>
+<script src="social.js"></script>
 </head>
 <body>
 <div id="acceso">
@@ -102,6 +103,10 @@ tr.banco td b { color: var(--ink-2); }
   <div class="barra"><a href="./">← Estadísticas</a><span id="actualizado"></span></div>
   <div id="red" class="aviso-red" hidden>No se puede conectar con la federación; vuelvo a intentarlo en unos segundos.</div>
   <div class="card" id="cabecera"></div>
+  <section id="gradaBloque" hidden>
+    <h2>Grada</h2>
+    <div class="card" id="grada"></div>
+  </section>
   <div id="vivo" hidden>
     <h2>Parciales</h2>
     <div class="card scroll"><table id="cuartos"></table></div>
@@ -191,6 +196,7 @@ function arrancar(CONF) {
       fallos = 0;
       document.getElementById('red').hidden = true;
       pintar(m);
+      ponGrada(m);
     } catch (e) {
       console.error(e);
       document.getElementById('red').hidden = ++fallos < 2;
@@ -201,6 +207,21 @@ function arrancar(CONF) {
   }
   // Al volver a la pestaña (p. ej. tras bloquear el móvil), actualiza en el momento
   document.addEventListener('visibilitychange', () => { if (!document.hidden) ciclo(); });
+
+  // Chat de grada del partido de hoy (uno por partido; sigue ahí después, también en el detalle del panel)
+  let grada = null;
+  function ponGrada(m) {
+    const id = m ? `grada:${m.grupo}-${m.jornada}` : null;
+    if (typeof Social === 'undefined' || id === grada?.id) return;
+    grada?.h?.parar();
+    const bloque = document.getElementById('gradaBloque');
+    bloque.hidden = true;
+    grada = { id };
+    if (!id) return;
+    const este = grada;
+    Social.hilo(document.getElementById('grada'), id, { modo: 'chat', cada: 8000, vacio: 'Nadie ha escrito todavía. ¡Anima al equipo!' })
+      .then(h => { este.h = h; bloque.hidden = !h; });
+  }
 
   const escudo = (logo, nombre) => logo ? `<img src="${esc(logo)}" alt="" referrerpolicy="no-referrer">` : `<span class="ini">${esc(iniciales(titleCase(nombre)))}</span>`;
   const enlacePanel = m => `./#partido-${m.grupo}-${m.jornada}`;
