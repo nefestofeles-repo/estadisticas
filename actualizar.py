@@ -295,7 +295,7 @@ def clasificacion():
 def _clasificacion():
     entero = lambda v: int(v or 0)
     return [{"posicion": entero(s["position"]), "id": entero(s["idTeam"]), "equipo": s["teamName"],
-                      "logo": s.get("entityLogo"), "pj": entero(s["matchPlayed"]), "g": entero(s["matchWin"]),
+                      "logo": "escudo.png" if entero(s["idTeam"]) == EQUIPO_ID else s.get("entityLogo"), "pj": entero(s["matchPlayed"]), "g": entero(s["matchWin"]),
                       "p": entero(s["matchLost"]), "pf": entero(s["matchScoreFavour"]), "pc": entero(s["matchScoreAgainst"]),
                       "puntos": entero(s["standingScore"]), "racha": racha(s.get("recentStreak"))}
                      for s in datos_grupo(GRUPOS[-1])["standing"]]

@@ -278,9 +278,9 @@ function arrancar(CONF) {
     }
     cab.innerHTML = `${estado} <span style="color:var(--muted);font-size:13px">· J${m.jornada} · ${esc(titleCase(m.nameField || ''))}</span>
       <div class="marcador">
-        <div class="equipo ${local ? 'nuestro' : ''}">${escudo(m.logoLocal, m.nameLocalTeam)}<div class="nom">${esc(titleCase(m.nameLocalTeam))}</div></div>
+        <div class="equipo ${local ? 'nuestro' : ''}">${escudo(local ? 'escudo.png' : m.logoLocal, m.nameLocalTeam)}<div class="nom">${esc(titleCase(m.nameLocalTeam))}</div></div>
         <div><div class="tanteo">${ptsL ?? '–'}–${ptsV ?? '–'}</div><div class="reloj">${reloj}</div></div>
-        <div class="equipo ${local ? '' : 'nuestro'}">${escudo(m.logoVisitant, m.nameVisitorTeam)}<div class="nom">${esc(titleCase(m.nameVisitorTeam))}</div></div>
+        <div class="equipo ${local ? '' : 'nuestro'}">${escudo(local ? m.logoVisitant : 'escudo.png', m.nameVisitorTeam)}<div class="nom">${esc(titleCase(m.nameVisitorTeam))}</div></div>
       </div>${faltas}`;
     document.title = vivo && !terminado ? `${ptsL}–${ptsV} · Directo` : 'Directo';
     if (!vivo) return;

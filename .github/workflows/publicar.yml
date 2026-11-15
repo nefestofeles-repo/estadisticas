@@ -74,7 +74,7 @@ jobs:
           TZ: Europe/Madrid
         run: |
           python3 actualizar.py
-          mkdir -p web && cp informe.html web/index.html && cp directo.html web/directo.html && cp social.js web/
+          mkdir -p web && cp informe.html web/index.html && cp directo.html web/directo.html && cp social.js escudo.png web/
       - name: Base de datos de mensajes y almacén de fotos (se crean la primera vez)
         # Si falla (p. ej. el token de Cloudflare no tiene permiso para D1 y KV), la web se publica igual, sin mensajes
         continue-on-error: true
