@@ -93,7 +93,6 @@ p { margin: 0 0 20px; color: var(--ink-2); }
 #error { margin: 16px 0 0; color: var(--neg); min-height: 1.5em; }
 button { font: inherit; font-weight: 600; padding: 10px 28px; border-radius: 999px; border: 0; background: #2a78d6; color: #fff; cursor: pointer; }
 </style>
-${modo === 'invitacion' ? '' : '<script src="https://accounts.google.com/gsi/client" async></script>'}
 </head>
 <body>
 <div class="caja">
@@ -112,9 +111,11 @@ async function entrar(direccion, datos) {
     error.textContent = (await r.json()).error;
   } catch { error.textContent = 'No se ha podido entrar. Comprueba la conexión.'; }
 }
-const conGoogle = respuesta => entrar(${JSON.stringify(ENTRAR)}, { credential: respuesta.credential });
+// Google busca la función por su nombre en window
+window.conGoogle = respuesta => entrar(${JSON.stringify(ENTRAR)}, { credential: respuesta.credential });
 document.getElementById('invitacion')?.addEventListener('click', () => entrar(location.pathname, {}));
 </script>
+${modo === 'invitacion' ? '' : '<script src="https://accounts.google.com/gsi/client" async></script>'}
 </body>
 </html>`;
 }
