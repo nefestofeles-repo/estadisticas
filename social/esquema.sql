@@ -35,3 +35,18 @@ CREATE TABLE IF NOT EXISTS visto (
   ultimo INTEGER NOT NULL,
   PRIMARY KEY (quien, hilo)
 );
+
+-- Mensajes reportados: se ocultan a los demás hasta que un administrador los revisa (mantener o borrar)
+CREATE TABLE IF NOT EXISTS reportes (
+  mensaje INTEGER NOT NULL,
+  autor TEXT NOT NULL,              -- quien lo reporta (correo o "invitación:<nombre>")
+  nombre TEXT NOT NULL,
+  creado INTEGER NOT NULL,
+  PRIMARY KEY (mensaje, autor)
+);
+-- Reportados que un administrador decidió mantener: vuelven a verse y ya no se ocultan
+CREATE TABLE IF NOT EXISTS revisados (
+  mensaje INTEGER PRIMARY KEY,
+  quien TEXT NOT NULL,
+  creado INTEGER NOT NULL
+);

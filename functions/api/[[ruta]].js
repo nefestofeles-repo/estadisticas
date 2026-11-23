@@ -12,6 +12,8 @@ const MAX_TEXTO = 1000, MAX_FOTO = 3 * 1024 * 1024, MAX_MENSAJES = 300;
 const json = (datos, status = 200) =>
   new Response(JSON.stringify(datos), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 const error = (texto, status) => json({ error: texto }, status);
+// Reportado y sin revisar: solo lo ven su autor y los administradores
+const OCULTO = `EXISTS (SELECT 1 FROM reportes r WHERE r.mensaje = m.id) AND NOT EXISTS (SELECT 1 FROM revisados v WHERE v.mensaje = m.id)`;
 const cambia = (db, hilo) => db.prepare('INSERT INTO hilos (hilo, version) VALUES (?1, ?2) ON CONFLICT (hilo) DO UPDATE SET version = ?2')
   .bind(hilo, Date.now());
 
@@ -29,6 +31,8 @@ export async function onRequest({ request, env, data, params }) {
     if (ruta2 === 'GET foto') return await daFoto(FOTOS, arg);
     if (ruta2 === 'GET novedades') return await novedades(DB, yo);
     if (ruta2 === 'POST visto') return await marcaVisto(DB, yo, await request.json());
+    if (ruta2 === 'POST reporte') return await reporta(DB, yo, await request.json());   // también los invitados
+    if (ruta2 === 'POST revisar') return await revisa(DB, yo, await request.json());
     if (!yo.google) return error('Para escribir o reaccionar hay que entrar con una cuenta de Google.', 403);
     if (ruta2 === 'POST hilo') return await escribe(DB, FOTOS, yo, arg, await request.formData());
     if (ruta2 === 'DELETE mensaje') return await borra(DB, FOTOS, yo, Number(arg));
@@ -58,9 +62,17 @@ async function leeHilo(db, yo, hilo, version) {
   if (!HILO.test(hilo)) return error('Hilo no válido', 400);
   const actual = (await db.prepare('SELECT version FROM hilos WHERE hilo = ?').bind(hilo).first('version')) || 0;
   if (version && Number(version) === actual) return json({ version: actual, sinCambios: true });
-  const { results: mensajes } = await db.prepare(
-    'SELECT * FROM (SELECT id, autor, nombre, texto, foto, creado FROM mensajes WHERE hilo = ? ORDER BY id DESC LIMIT ?) ORDER BY id')
-    .bind(hilo, MAX_MENSAJES).all();
+  const { results: todos } = await db.prepare(
+    `SELECT * FROM (SELECT m.id, m.autor, m.nombre, m.texto, m.foto, m.creado,
+       (SELECT json_group_array(r.nombre) FROM reportes r WHERE r.mensaje = m.id) AS reportadoPor,
+       EXISTS (SELECT 1 FROM reportes r WHERE r.mensaje = m.id AND r.autor = ?2) AS reportadoPorMi,
+       EXISTS (SELECT 1 FROM revisados v WHERE v.mensaje = m.id) AS revisado
+     FROM mensajes m WHERE m.hilo = ?1 ORDER BY m.id DESC LIMIT ?3) ORDER BY id`)
+    .bind(hilo, yo.quien, MAX_MENSAJES).all();
+  const mensajes = todos.map(({ reportadoPor, reportadoPorMi, revisado, ...m }) => {
+    const por = JSON.parse(reportadoPor || '[]');
+    return { ...m, oculto: por.length > 0 && !revisado, reportadoPorMi: !!reportadoPorMi, reportadoPor: yo.admin ? por : undefined };
+  }).filter(m => !m.oculto || yo.admin || m.autor === yo.quien);
   const objetivos = [`hilo:${hilo}`, ...mensajes.map(m => `mensaje:${m.id}`)];
   const { results: filas } = await db.prepare(
     `SELECT objetivo, autor, nombre, emoji FROM reacciones WHERE objetivo IN (SELECT value FROM json_each(?))`)
@@ -70,7 +82,8 @@ async function leeHilo(db, yo, hilo, version) {
     version: actual,
     reacciones: reacciones[`hilo:${hilo}`] || [],
     mensajes: mensajes.map(({ autor, ...m }) => ({
-      ...m, propio: autor === yo.quien, puedeBorrar: autor === yo.quien || yo.admin, reacciones: reacciones[`mensaje:${m.id}`] || [],
+      ...m, propio: autor === yo.quien, puedeBorrar: autor === yo.quien || yo.admin, puedeReportar: autor !== yo.quien && !yo.admin,
+      reacciones: reacciones[`mensaje:${m.id}`] || [],
     })),
   });
 }
@@ -114,6 +127,8 @@ async function borra(db, fotos, yo, id) {
   await db.batch([
     db.prepare('DELETE FROM mensajes WHERE id = ?').bind(id),
     db.prepare('DELETE FROM reacciones WHERE objetivo = ?').bind(`mensaje:${id}`),
+    db.prepare('DELETE FROM reportes WHERE mensaje = ?').bind(id),
+    db.prepare('DELETE FROM revisados WHERE mensaje = ?').bind(id),
     cambia(db, m.hilo),
   ]);
   if (m.foto) await fotos.delete(m.foto);
@@ -141,12 +156,38 @@ async function daFoto(fotos, clave) {
   return new Response(value, { headers: { 'Content-Type': metadata?.tipo || 'image/jpeg', 'Cache-Control': 'private, max-age=31536000, immutable' } });
 }
 
-// Mensajes de otros sin ver, por hilo
+// Mensajes de otros sin ver, por hilo; a los administradores, también los reportados por revisar
 async function novedades(db, yo) {
   const { results } = await db.prepare(
     `SELECT m.hilo, COUNT(*) AS n FROM mensajes m LEFT JOIN visto v ON v.quien = ?1 AND v.hilo = m.hilo
-     WHERE m.id > COALESCE(v.ultimo, 0) AND m.autor != ?1 GROUP BY m.hilo`).bind(yo.quien).all();
-  return json({ hilos: Object.fromEntries(results.map(r => [r.hilo, r.n])) });
+     WHERE m.id > COALESCE(v.ultimo, 0) AND m.autor != ?1 AND NOT (${OCULTO}) GROUP BY m.hilo`).bind(yo.quien).all();
+  const revisar = yo.admin
+    ? (await db.prepare(`SELECT m.hilo, COUNT(*) AS n FROM mensajes m WHERE ${OCULTO} GROUP BY m.hilo`).all()).results : [];
+  return json({ hilos: Object.fromEntries(results.map(r => [r.hilo, r.n])), revisar: Object.fromEntries(revisar.map(r => [r.hilo, r.n])) });
+}
+
+// Reportar un mensaje de otra persona: queda oculto para los demás hasta que lo revise un administrador
+async function reporta(db, yo, { mensaje }) {
+  const m = Number.isInteger(mensaje) && await db.prepare('SELECT hilo, autor FROM mensajes WHERE id = ?').bind(mensaje).first();
+  if (!m) return error('Ese mensaje ya no existe.', 404);
+  if (m.autor === yo.quien) return error('No puedes reportar tus propios mensajes; puedes borrarlos.', 400);
+  await db.batch([
+    db.prepare('INSERT OR IGNORE INTO reportes (mensaje, autor, nombre, creado) VALUES (?, ?, ?, ?)').bind(mensaje, yo.quien, yo.nombre, Date.now()),
+    cambia(db, m.hilo),
+  ]);
+  return json({ ok: true });
+}
+
+// Un administrador decide mantener un mensaje reportado (para quitarlo, se borra como cualquier otro)
+async function revisa(db, yo, { mensaje }) {
+  if (!yo.admin) return error('Solo los administradores pueden revisar mensajes.', 403);
+  const hilo = Number.isInteger(mensaje) && await db.prepare('SELECT hilo FROM mensajes WHERE id = ?').bind(mensaje).first('hilo');
+  if (!hilo) return error('Ese mensaje ya no existe.', 404);
+  await db.batch([
+    db.prepare('INSERT OR REPLACE INTO revisados (mensaje, quien, creado) VALUES (?, ?, ?)').bind(mensaje, yo.quien, Date.now()),
+    cambia(db, hilo),
+  ]);
+  return json({ ok: true });
 }
 
 async function marcaVisto(db, yo, { hilo, ultimo }) {

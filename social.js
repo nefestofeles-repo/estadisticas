@@ -61,6 +61,12 @@ const Social = (() => {
 .s-msg img { max-width: min(100%, 360px); max-height: 360px; border-radius: 8px; display: block; cursor: zoom-in; }
 .s-borrar { font: inherit; font-size: 12px; border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0; text-decoration: underline; }
 .s-vacio { color: var(--muted); font-size: 14px; }
+.s-msg.s-oculto { padding-left: 10px; border-left: 3px solid var(--neg); }
+.s-msg.s-oculto .s-texto, .s-msg.s-oculto img { opacity: .6; }
+.s-reportado { color: var(--neg); font-size: 12px; }
+#revisar { margin: -8px 0 16px; padding: 10px 14px; border-radius: 8px; font-size: 14px; display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline;
+           background: color-mix(in srgb, var(--neg) 10%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--neg) 35%, transparent); }
+#revisar a { color: var(--ink); }
 .s-form { display: grid; gap: 8px; }
 .s-form textarea { font: inherit; font-size: 15px; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--axis); background: var(--page);
                    color: var(--ink); resize: vertical; min-height: 44px; }
@@ -116,8 +122,15 @@ const Social = (() => {
         if (modo === 'comentarios') el.querySelector('.s-hilo-reac').innerHTML = botonesReacciones(d.reacciones, `hilo:${id}`, puede, usuario.emojis);
         // En el chat las reacciones van en la línea del nombre, para que ocupe poco
         const reac = m => m.reacciones.length || puede ? botonesReacciones(m.reacciones, `mensaje:${m.id}`, puede, usuario.emojis) : '';
-        lista.innerHTML = d.mensajes.map(m => `<li class="s-msg">
-            <header><b>${esc(m.nombre)}</b><span>${cuando(m.creado)}</span>${m.puedeBorrar ? `<button type="button" class="s-borrar" data-borrar="${m.id}">Borrar</button>` : ''}${modo === 'chat' ? reac(m) : ''}</header>
+        // Reportado: el administrador ve quién lo reportó y decide; su autor sabe que está oculto; los demás no lo ven
+        const estado = m => m.oculto
+          ? (usuario.admin ? `<span class="s-reportado">Reportado por ${esc(m.reportadoPor.join(', '))} · oculto para los demás</span>
+               <button type="button" class="s-borrar" data-mantener="${m.id}">Mantener</button>`
+             : '<span class="s-reportado">Oculto: lo está revisando un administrador</span>')
+          : m.reportadoPorMi ? '<span class="s-reportado">Lo has reportado</span>'
+          : m.puedeReportar ? `<button type="button" class="s-borrar" data-reportar="${m.id}" title="Ocultarlo hasta que lo revise un administrador">Reportar</button>` : '';
+        lista.innerHTML = d.mensajes.map(m => `<li class="s-msg${m.oculto ? ' s-oculto' : ''}">
+            <header><b>${esc(m.nombre)}</b><span>${cuando(m.creado)}</span>${m.puedeBorrar ? `<button type="button" class="s-borrar" data-borrar="${m.id}">Borrar</button>` : ''}${estado(m)}${modo === 'chat' ? reac(m) : ''}</header>
             ${m.texto ? `<div class="s-texto">${conEnlaces(m.texto)}</div>` : ''}
             ${m.foto ? `<a href="/api/foto/${m.foto}" target="_blank"><img src="/api/foto/${m.foto}" alt="Foto de ${esc(m.nombre)}" loading="lazy"></a>` : ''}
             ${modo === 'chat' ? '' : reac(m)}
@@ -135,6 +148,15 @@ const Social = (() => {
       if (b.dataset.borrar) {
         if (!confirm('¿Borrar este mensaje?')) return;
         try { await api(`mensaje/${b.dataset.borrar}`, { method: 'DELETE' }); } catch (err) { fallo.textContent = err.message; }
+        return carga();
+      }
+      if (b.dataset.reportar) {
+        if (!confirm('¿Reportar este mensaje? Dejará de verse hasta que un administrador lo revise.')) return;
+        try { await json('reporte', { mensaje: +b.dataset.reportar }); } catch (err) { fallo.textContent = err.message; }
+        return carga();
+      }
+      if (b.dataset.mantener) {
+        try { await json('revisar', { mensaje: +b.dataset.mantener }); } catch (err) { fallo.textContent = err.message; }
         return carga();
       }
       if (b.hasAttribute('data-elegir')) {
@@ -194,11 +216,12 @@ const Social = (() => {
   }
 
   // Mensajes sin ver: { hilos: { "partido:7438-3": 2, … } }
-  const novedades = () => api('novedades').then(d => d.hilos).catch(() => null);
+  let novP;
+  const novedades = () => novP ||= api('novedades').catch(() => null);
   const globo = n => n ? `<span class="s-nuevos" title="${n} mensaje${n === 1 ? '' : 's'} nuevo${n === 1 ? '' : 's'}">${n > 99 ? '99+' : n}</span>` : '';
   // Pone el contador en cada elemento según los hilos que cuente (prefijo "partido:" o un hilo concreto)
   async function contadores(marcas) {
-    const hilos = await novedades();
+    const hilos = (await novedades())?.hilos;
     if (!hilos) return;
     ponEstilo();
     for (const [el, cuenta] of marcas) {
@@ -208,5 +231,16 @@ const Social = (() => {
     }
   }
 
-  return { yo, hilo, contadores };
+  // Aviso para los administradores con enlaces a los mensajes reportados; enlace(hilo) → [texto, dirección]
+  async function pendientes(el, enlace) {
+    const revisar = Object.entries((await novedades())?.revisar || {});
+    if (!el || !revisar.length) return;
+    ponEstilo();
+    const total = revisar.reduce((a, [, n]) => a + n, 0);
+    el.innerHTML = `<b>⚠ ${total} mensaje${total === 1 ? '' : 's'} reportado${total === 1 ? '' : 's'} por revisar:</b>` +
+      revisar.map(([h, n]) => { const [texto, href] = enlace(h); return `<a href="${esc(href)}">${esc(texto)}${n > 1 ? ` (${n})` : ''}</a>`; }).join('');
+    el.hidden = false;
+  }
+
+  return { yo, hilo, contadores, pendientes };
 })();

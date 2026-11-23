@@ -173,6 +173,7 @@ footer { margin-top: 32px; font-size: 12px; color: var(--muted); }
 </div>
 <main hidden>
   <nav class="tabs" id="tabs" aria-label="Jugadora"></nav>
+  <div id="revisar" role="status" hidden></div>
   <header class="ficha">
     <div class="avatar grande" id="foto"></div>
     <div>
@@ -532,6 +533,16 @@ if (typeof Social !== 'undefined') Social.contadores([
   [document.querySelector('#tabs .elige'), h => !!MIA && h === 'jugadora:' + MIA.replace(/[^a-z-]/g, '')],
   ...[...document.querySelectorAll('[data-hilo]')].map(el => [el, h => h === el.dataset.hilo]),
 ]);
+// Administradores: aviso de mensajes reportados, con enlace a donde están
+if (typeof Social !== 'undefined') Social.pendientes(document.getElementById('revisar'), h => {
+  const [tipo, resto] = [h.slice(0, h.indexOf(':')), h.slice(h.indexOf(':') + 1)];
+  if (tipo === 'jugadora') {
+    const j = TODO.jugadoras.find(j => slugJugadora(j.nombre).replace(/[^a-z-]/g, '') === resto);
+    return [`Mensajes para ${j ? titleCase(j.nombre).split(' ')[0] : resto}`, `#j-${resto}`];
+  }
+  const jornada = resto.split('-')[1];
+  return [tipo === 'grada' ? `Grada J${jornada} (abre «Chat de grada»)` : `Comentarios J${jornada}`, `#partido-${resto}`];
+});
 }
 
 function vistaJugadora(TODO, IDX) {
