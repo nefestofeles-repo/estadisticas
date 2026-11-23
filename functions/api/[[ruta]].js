@@ -2,8 +2,11 @@
 // quién es ({ quien, nombre, google, admin }); los invitados con enlace solo pueden leer.
 // Datos: base de datos D1 (env.DB, esquema en social/esquema.sql) y fotos en el almacén KV (env.FOTOS).
 
+import { palabrasProhibidas } from '../../social/filtro.js';
+
 const EMOJIS = ['👏', '🔥', '💪', '❤️', '😮', '😂'];
-const HILO = /^(partido|grada):\d+-\d+$/;
+// partido:<grupo>-<jornada>, grada:<grupo>-<jornada> o jugadora:<nombre-en-minusculas-con-guiones>
+const HILO = /^(?:(partido|grada):\d+-\d+|jugadora:[a-z#-]{3,80})$/;
 const MAX_TEXTO = 1000, MAX_FOTO = 3 * 1024 * 1024, MAX_MENSAJES = 300;
 
 const json = (datos, status = 200) =>
@@ -79,6 +82,7 @@ const esImagen = b => (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) ? 'image
 async function escribe(db, fotos, yo, hilo, form) {
   if (!HILO.test(hilo)) return error('Hilo no válido', 400);
   const texto = String(form.get('texto') || '').trim().slice(0, MAX_TEXTO);
+  if (palabrasProhibidas(texto)) return error('No se ha publicado: el mensaje tiene palabras que no se permiten en esta web.', 422);
   const archivo = form.get('foto');
   let foto = null;
   if (archivo && typeof archivo !== 'string' && archivo.size) {

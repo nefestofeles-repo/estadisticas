@@ -248,6 +248,11 @@ footer { margin-top: 32px; font-size: 12px; color: var(--muted); }
 
   <h2>Detalle por partido</h2>
   <div class="card scroll"><table id="tabla"></table></div>
+
+  <div id="jSocialBloque" hidden>
+  <h2 id="jSocialTitulo">Mensajes</h2>
+  <div class="card" id="jSocial"></div>
+  </div>
   </section>
 
   <section id="vEquipo" hidden>
@@ -419,6 +424,7 @@ const fechaCorta = s => { const d = new Date((s || '').replace(' ', 'T'));
   return isNaN(d) ? '' : d.toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' }); };
 const normaliza = s => (s || '').normalize('NFKD').replace(/[^\x00-\x7f]/g, '').toUpperCase().split(/\s+/).filter(Boolean).join(' ');
 const slugJugadora = n => normaliza(n).toLowerCase().replace(/ /g, '-');
+const hiloJugadora = n => 'jugadora:' + slugJugadora(n).replace(/[^a-z-]/g, '');
 let MIA = null;   // jugadora elegida (slug); la fija arrancar()
 const esMia = n => !!MIA && slugJugadora(n) === MIA;
 const iniciales = s => s.split(' ').slice(0, 2).map(w => w[0]).join('');
@@ -522,6 +528,8 @@ if (RIVAL) vistaRival(TODO, RIVAL); else if (PARTIDO) vistaPartido(TODO, PARTIDO
 if (typeof Social !== 'undefined') Social.contadores([
   [document.querySelector('#tabs a[href="#equipo"]'), h => h.startsWith('partido:')],
   [document.querySelector('#tabs a[href="directo.html"]'), h => h.startsWith('grada:')],
+  // En el desplegable, los mensajes nuevos para la jugadora elegida (la última vez, si ahora se ve otra cosa)
+  [document.querySelector('#tabs .elige'), h => !!MIA && h === 'jugadora:' + MIA.replace(/[^a-z-]/g, '')],
   ...[...document.querySelectorAll('[data-hilo]')].map(el => [el, h => h === el.dataset.hilo]),
 ]);
 }
@@ -787,6 +795,16 @@ document.getElementById('pie').innerHTML = `Fuente: actas digitales de la Federa
 
 dibujar();
 alCambiarTema(dibujar);
+
+// --- Mensajes para ella (ánimos, felicitaciones, fotos) ---
+if (typeof Social !== 'undefined') {
+  const corto = nombre.split(' ')[0];
+  document.getElementById('jSocialTitulo').textContent = `Mensajes para ${corto}`;
+  Social.hilo(document.getElementById('jSocial'), hiloJugadora(DATOS.jugadora), {
+    cada: 30000, pregunta: `Ánimos para ${corto}`, placeholder: `Escribe algo para ${corto}…`,
+    vacio: `Todavía no hay mensajes para ${corto}. ¡Sé la primera persona en escribirle!`,
+  }).then(h => { document.getElementById('jSocialBloque').hidden = !h; });
+}
 }
 
 // ===== Pestaña Equipo =====

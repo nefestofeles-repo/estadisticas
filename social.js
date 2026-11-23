@@ -86,16 +86,17 @@ const Social = (() => {
   }
 
   // Un hilo: comentarios de un partido (modo "comentarios", con reacciones al partido) o chat de grada (modo "chat")
-  async function hilo(el, id, { modo = 'comentarios', cada = 0, vacio = 'Todavía no hay mensajes.', soloLeer = false } = {}) {
+  async function hilo(el, id, { modo = 'comentarios', cada = 0, vacio = 'Todavía no hay mensajes.', soloLeer = false,
+                                pregunta = '¿Qué te ha parecido el partido?', placeholder = '' } = {}) {
     const usuario = await yo();
     if (!usuario) return null;
     ponEstilo();
     const puede = usuario.puedeEscribir && !soloLeer;
     el.hidden = false;
     el.classList.add('s-bloque', modo === 'chat' ? 's-chat' : 's-comentarios');
-    el.innerHTML = (modo === 'comentarios' ? '<div class="s-cabeza"><span class="s-aviso">¿Qué te ha parecido el partido?</span><div class="s-hilo-reac"></div></div>' : '') + '<ul class="s-lista"></ul><p class="s-error" role="alert"></p>' +
+    el.innerHTML = (modo === 'comentarios' ? `<div class="s-cabeza"><span class="s-aviso">${esc(pregunta)}</span><div class="s-hilo-reac"></div></div>` : '') + '<ul class="s-lista"></ul><p class="s-error" role="alert"></p>' +
       (puede ? `<form class="s-form">
-        <textarea name="texto" rows="2" maxlength="1000" placeholder="${modo === 'chat' ? 'Escribe en la grada…' : 'Escribe un comentario…'}"></textarea>
+        <textarea name="texto" rows="2" maxlength="1000" placeholder="${esc(placeholder || (modo === 'chat' ? 'Escribe en la grada…' : 'Escribe un comentario…'))}"></textarea>
         <div class="s-previa" hidden></div>
         <div class="s-fila"><label class="s-boton">📷 Foto<input type="file" accept="image/*" hidden></label>
           <button type="submit">Enviar</button></div>
