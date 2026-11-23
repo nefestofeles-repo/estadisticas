@@ -540,7 +540,8 @@ def actualizacion_completa():
     for jugadora in plantilla_equipo(bases):
         partidos = [ficha(base, jugadora) for base in bases]
         jugados = [p for p in partidos if p.get("jugo")]
-        print(f"{jugadora}: {len(jugados)} partidos, {sum(p.get('puntos', 0) for p in jugados)} puntos")
+        # Sin nombres: el registro de GitHub Actions es público
+        print(f"Jugadora {len(jugadoras) + 1}: {len(jugados)} partidos con datos")
         uuid = next((p["uuid"] for p in partidos if p.get("uuid")), None)
         jugadoras.append({"nombre": jugadora, "foto": foto(uuid) if uuid else None, "partidos": partidos})
     # Identificadores para enlazar a las páginas del equipo, el club y el grupo en la web de la federación
