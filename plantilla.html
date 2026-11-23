@@ -497,13 +497,15 @@ if (IDX >= 0) avatar(document.querySelector('#tabs .avatar'), TODO.jugadoras[IDX
 else document.querySelector('#tabs .avatar').remove();
 document.getElementById('eligeJugadora').addEventListener('change', e => { location.hash = 'j-' + encodeURIComponent(e.target.value); });
 
-// Enlace a GitHub para lanzar la actualización a mano ("Run workflow"); hace falta haber iniciado sesión en GitHub
-if (TODO.repo) {
+// Enlace a GitHub para lanzar la actualización a mano ("Run workflow"); solo para los administradores
+// (secreto ADMINISTRADORES): a los demás no les sirve, porque hace falta permiso en el repositorio
+if (TODO.repo && typeof Social !== 'undefined') Social.yo().then(yo => {
+  if (!yo?.admin) return;
   const enlace = document.getElementById('refresco');
   enlace.href = `https://github.com/${TODO.repo}/actions/workflows/publicar.yml`;
   enlace.title = 'Pulsa "Run workflow" y recarga esta página en unos 2 minutos';
   enlace.hidden = false;
-}
+});
 
 Chart.defaults.font.family = 'system-ui, -apple-system, "Segoe UI", sans-serif';
 const tip = document.getElementById('tip');
