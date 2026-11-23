@@ -10,6 +10,7 @@ import functools
 import getpass
 import hashlib
 import hmac
+import io
 import json
 import os
 import re
@@ -25,10 +26,12 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 # --- Configuración -----------------------------------------------------------
-# Nombres tal como salen en el acta: uno por línea en jugadoras.txt, o separados por ";" en la variable JUGADORAS
-# (fuera del código para que no queden públicos en el repositorio).
-JUGADORAS = [n.strip() for n in (os.environ.get("JUGADORAS")
-             or (Path(__file__).resolve().parent / "jugadoras.txt").read_text(encoding="utf-8")).replace(";", "\n").splitlines() if n.strip()]
+# El panel incluye a todas las jugadoras del equipo que salen en alguna acta. Opcionalmente, nombres de más
+# (tal como saldrán en el acta, p. ej. alguna que aún no ha jugado): uno por línea en jugadoras.txt o separados
+# por ";" en la variable JUGADORAS (fuera del código para que no queden públicos en el repositorio).
+_extra = Path(__file__).resolve().parent / "jugadoras.txt"
+JUGADORAS = [n.strip() for n in (os.environ.get("JUGADORAS") or (_extra.read_text(encoding="utf-8") if _extra.exists() else ""))
+             .replace(";", "\n").splitlines() if n.strip() and n.strip() != "-"]
 EQUIPO_ID = 40103                     # PONCE PUCELA BASKET B3
 GRUPOS = [7438]                       # 2ª Div. Cadete Fem. - Grupo C (añadir fases siguientes aquí)
 CATEGORIA = 1135                      # 2ªDIV.- CAD. FEM. AUT.: la comparación con la liga usa todos sus grupos
@@ -411,7 +414,21 @@ def evolucion(jugadas, duracion, local):
     return puntos
 
 
-def partido_equipo(base, seguidas):
+def plantilla_equipo(bases):
+    """Nombres de todas las jugadoras del equipo que salen en las actas (y las de JUGADORAS), por dorsal."""
+    vistas = {}
+    for base in bases:
+        nuestro, _ = equipos(acta(base)[0])
+        for j in (nuestro or {}).get("players", []):
+            if j.get("name"):
+                vistas[normaliza(j["name"])] = (j["name"], j.get("dorsal"))   # el último dorsal que llevó
+    for n in JUGADORAS:
+        vistas.setdefault(normaliza(n), (n, None))
+    orden = lambda v: (int(v[1]) if str(v[1] or "").isdigit() else 999, normaliza(v[0]))
+    return [nombre for nombre, _ in sorted(vistas.values(), key=orden)]
+
+
+def partido_equipo(base):
     """Estadísticas de equipo de un partido: tiros, cuartos y líneas de todas las jugadoras."""
     p = dict(base)
     st, jugadas = acta(p)
@@ -426,7 +443,7 @@ def partido_equipo(base, seguidas):
                            "jugo": (j.get("timePlayed") or 0) > 0 or (j.get("gamePlayed") or 0) > 0,
                            "minutos": j.get("timePlayed") or 0, "puntos": j["data"].get("score", 0),
                            "valoracion": j["data"].get("valoration", 0), "masMenos": j.get("inOut", 0),
-                           "seguida": normaliza(j.get("name")) in seguidas, **lanzamientos(j["data"]),
+                           **lanzamientos(j["data"]),
                            "defensa": defensa(jugadas, normaliza(j.get("name")), bool(j.get("starting")),
                                               nuestro["teamIdIntern"]) if jugadas else None}
                           for j in nuestro.get("players", [])],
@@ -457,8 +474,17 @@ def foto(uuid):
         except Exception as e:
             print(f"  sin foto para {uuid} ({e})")
             return None
-    tipo = "image/png" if guardada.suffix.lower() == ".png" else "image/jpeg"
-    return f"data:{tipo};base64,{base64.b64encode(guardada.read_bytes()).decode()}"
+    # Reducida a JPEG de 240 px de alto: con toda la plantilla, las fotos son lo que más pesa del panel
+    try:
+        from PIL import Image
+        imagen = Image.open(guardada).convert("RGB")
+        imagen.thumbnail((240, 240))
+        salida = io.BytesIO()
+        imagen.save(salida, "JPEG", quality=82, optimize=True)
+        return f"data:image/jpeg;base64,{base64.b64encode(salida.getvalue()).decode()}"
+    except ImportError:
+        tipo = "image/png" if guardada.suffix.lower() == ".png" else "image/jpeg"
+        return f"data:{tipo};base64,{base64.b64encode(guardada.read_bytes()).decode()}"
 
 
 def cifra(datos, clave, iteraciones=600_000):
@@ -511,17 +537,12 @@ def actualizacion_completa():
     partidos_equipo = sorted(partidos_del_equipo(), key=lambda g: (g[2]["matchDay"] or "", g[0]))
     bases = [partido(grupo, num, m) for grupo, num, m in partidos_equipo]
     jugadoras = []
-    for jugadora in JUGADORAS:
-        print(f"\n== {jugadora}")
-        partidos = []
-        for base in bases:
-            p = ficha(base, jugadora)
-            estado = "pendiente" if not p["jugado"] else (f"{p.get('puntos', 0)} pts" if p["jugo"] else "no jugó / sin datos")
-            print(f"J{p['jornada']:>2} {p['fecha'][:10]} vs {p['rival']}: {estado}")
-            partidos.append(p)
+    for jugadora in plantilla_equipo(bases):
+        partidos = [ficha(base, jugadora) for base in bases]
+        jugados = [p for p in partidos if p.get("jugo")]
+        print(f"{jugadora}: {len(jugados)} partidos, {sum(p.get('puntos', 0) for p in jugados)} puntos")
         uuid = next((p["uuid"] for p in partidos if p.get("uuid")), None)
         jugadoras.append({"nombre": jugadora, "foto": foto(uuid) if uuid else None, "partidos": partidos})
-    seguidas = {normaliza(n) for n in JUGADORAS}
     # Identificadores para enlazar a las páginas del equipo, el club y el grupo en la web de la federación
     m = next((m for _, _, m in reversed(partidos_equipo) if m.get("season")), {})
     club = m.get("idLocalClub") if str(m.get("idLocalTeam")) == str(EQUIPO_ID) else m.get("idVisitorClub")
@@ -531,7 +552,7 @@ def actualizacion_completa():
             "liga": liga(),
             "equipoDatos": {"id": EQUIPO_ID, "club": club, "grupo": GRUPOS[-1], "temporada": m.get("season"),
                             "clasificacion": clasificacion(),
-                            "partidos": [partido_equipo(b, seguidas) for b in bases]}}
+                            "partidos": [partido_equipo(b) for b in bases]}}
 
 
 def acta_reciente(minutos=90):
@@ -563,9 +584,9 @@ def main():
     (BASE / "informe.html").write_text(html, encoding="utf-8")
 
     # Página del directo: lee los datos en vivo de la federación desde el navegador; aquí solo va cifrado
-    # lo que identifica al equipo y a las jugadoras que se siguen (misma contraseña y misma clave que el panel)
-    config = {"equipo": salida["equipo"], "equipoId": EQUIPO_ID, "grupos": GRUPOS, "esb": ESB,
-              "seguidas": [normaliza(j["nombre"]) for j in jugadoras]}
+    # lo que identifica al equipo (misma contraseña y misma clave que el panel); la jugadora destacada
+    # es la que cada cual ha elegido en el panel (se recuerda en su navegador)
+    config = {"equipo": salida["equipo"], "equipoId": EQUIPO_ID, "grupos": GRUPOS, "esb": ESB}
     plantilla = (BASE / "plantilla_directo.html").read_text(encoding="utf-8")
     html = plantilla.replace("/*__CIFRADO__*/null", json.dumps(cifra(config, clave)))
     (BASE / "directo.html").write_text(html, encoding="utf-8")

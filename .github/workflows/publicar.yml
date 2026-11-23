@@ -62,7 +62,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install cryptography
+      - run: pip install cryptography pillow
       - name: Descargar datos y generar informe cifrado
         env:
           INFORME_CLAVE: ${{ secrets.INFORME_CLAVE }}

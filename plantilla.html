@@ -95,6 +95,14 @@ select { font: inherit; padding: 6px 8px; border-radius: 8px; border: 1px solid 
 .v-win { color: var(--good); font-weight: 600; }
 .v-loss { color: var(--neg); font-weight: 600; }
 .tabs a.equipo { padding-left: 14px; }
+.tabs .elige { position: relative; display: flex; align-items: center; gap: 8px; padding: 4px 12px 4px 4px; border-radius: 999px; min-height: 40px;
+  color: var(--ink-2); background: var(--surface); box-shadow: 0 0 0 1px var(--ring); font-size: 14px; cursor: pointer; }
+.tabs .elige:not(:has(.avatar)) { padding-left: 14px; }
+.tabs .elige[aria-current="page"] { color: var(--ink); box-shadow: 0 0 0 2px var(--s1); font-weight: 600; }
+.tabs .elige .flecha { font-size: 11px; color: var(--muted); }
+.tabs .elige:focus-within { outline: 2px solid var(--s1); outline-offset: 2px; }
+/* El desplegable nativo, invisible encima de la pastilla: en el móvil abre la lista del sistema */
+.tabs .elige select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; font-size: 16px; }
 .tabs a.directo.hoy { color: var(--neg); font-weight: 600; box-shadow: 0 0 0 1px color-mix(in srgb, var(--neg) 50%, transparent); }
 a.gcal { display: inline-block; white-space: nowrap; padding: 3px 10px; border-radius: 999px; font-size: 13px; color: var(--s1); text-decoration: none; border: 1px solid color-mix(in srgb, var(--s1) 40%, transparent); }
 a.gcal:hover { background: color-mix(in srgb, var(--s1) 10%, transparent); }
@@ -296,7 +304,7 @@ footer { margin-top: 32px; font-size: 12px; color: var(--muted); }
   <div class="card scroll"><table id="pCuartos"></table></div>
 
   <h2>Nuestras jugadoras</h2>
-  <div class="card scroll"><p class="sub" style="margin-top:0">En negrita, las jugadoras que sigue este panel. Tit.: titular. Def.: puntos del rival por cada 40 minutos con ella en pista (cuanto más bajo, mejor). % TC rival: acierto del rival en tiros de campo con ella en pista. Miden la defensa de las cinco que están en pista; pasa el ratón por encima para ver el dato sin ella.</p><table id="pJugadoras"></table></div>
+  <div class="card scroll"><p class="sub" style="margin-top:0">En negrita, la jugadora que has elegido arriba. Tit.: titular. Def.: puntos del rival por cada 40 minutos con ella en pista (cuanto más bajo, mejor). % TC rival: acierto del rival en tiros de campo con ella en pista. Miden la defensa de las cinco que están en pista; pasa el ratón por encima para ver el dato sin ella.</p><table id="pJugadoras"></table></div>
 
   <h2>Equipo frente al rival</h2>
   <div class="card scroll"><table id="pVs"></table></div>
@@ -409,6 +417,10 @@ const rating = (pts, seg) => seg >= 60 ? pts * 2400 / seg : null;
 const sumaDefensa = lista => lista.reduce((a, d) => { if (d) for (const k in d) a[k] = (a[k] || 0) + d[k]; return a; }, {});
 const fechaCorta = s => { const d = new Date((s || '').replace(' ', 'T'));
   return isNaN(d) ? '' : d.toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' }); };
+const normaliza = s => (s || '').normalize('NFKD').replace(/[^\x00-\x7f]/g, '').toUpperCase().split(/\s+/).filter(Boolean).join(' ');
+const slugJugadora = n => normaliza(n).toLowerCase().replace(/ /g, '-');
+let MIA = null;   // jugadora elegida (slug); la fija arrancar()
+const esMia = n => !!MIA && slugJugadora(n) === MIA;
 const iniciales = s => s.split(' ').slice(0, 2).map(w => w[0]).join('');
 const pintarTiles = (id, tiles) => document.getElementById(id).innerHTML = tiles.map(([k, v, s]) =>
   `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s}</div></div>`).join('');
@@ -459,17 +471,31 @@ const PARTIDO = TODO.equipoDatos?.partidos.find(p => location.hash === enlacePar
 // Informe de un rival: #rival-<id de equipo>; la pestaña "Próximo rival" lleva al del siguiente partido sin jugar
 const RIVAL = TODO.liga?.equipos && TODO.equipoDatos ? (location.hash.match(/^#rival-(\d+)$/) || [])[1] || null : null;
 const SIGUIENTE = TODO.equipoDatos?.partidos.find(p => !p.jugado && p.idRival);
-const EQUIPO = (location.hash === '#equipo' || PARTIDO || RIVAL) && TODO.equipoDatos;
-const IDX = EQUIPO ? -1 : Math.min(Math.max(parseInt(location.hash.slice(1)) || 0, 0), TODO.jugadoras.length - 1);
+// Jugadora: por enlace (#j-<nombre>) o, sin nada en el enlace, la que se eligió la última vez en este navegador
+const recordada = (() => { try { return localStorage.getItem('jugadora'); } catch { return null; } })();
+const deEnlace = (location.hash.match(/^#j-(.+)$/) || [])[1];
+const porNombre = c => TODO.jugadoras.findIndex(j => slugJugadora(j.nombre) === c);
+let IDX = location.hash === '#equipo' || PARTIDO || RIVAL ? -1 : porNombre(deEnlace ? decodeURIComponent(deEnlace) : recordada);
+if (IDX < 0 && !TODO.equipoDatos) IDX = 0;
+const EQUIPO = IDX < 0 && TODO.equipoDatos;
+if (IDX >= 0) try { localStorage.setItem('jugadora', slugJugadora(TODO.jugadoras[IDX].nombre)); } catch {}
+// La elegida sale en negrita en las tablas del equipo y del directo
+MIA = IDX >= 0 ? slugJugadora(TODO.jugadoras[IDX].nombre) : recordada;
 
 // --- Pestañas y enlace de actualización (comunes) ---
 const avatar = (el, j) => { if (j.foto) el.style.backgroundImage = `url("${j.foto}")`; else el.textContent = iniciales(titleCase(j.nombre)); };
-document.getElementById('tabs').innerHTML = TODO.jugadoras.map((j, k) =>
-  `<a href="#${k}" ${k === IDX ? 'aria-current="page"' : ''}><span class="avatar"></span>${titleCase(j.nombre).split(' ').slice(0, 2).join(' ')}</a>`).join('') +
+const corto = j => titleCase(j.nombre).split(' ').slice(0, 2).join(' ');
+const dorsal = j => j.partidos.findLast(p => p.dorsal != null)?.dorsal;
+document.getElementById('tabs').innerHTML =
+  `<label class="elige" ${IDX >= 0 ? 'aria-current="page"' : ''}><span class="avatar"></span><span>${IDX >= 0 ? esc(corto(TODO.jugadoras[IDX])) : 'Jugadoras'}</span><span class="flecha">▾</span>
+    <select id="eligeJugadora" aria-label="Elegir jugadora">${IDX < 0 ? '<option value="" selected disabled>Elige una jugadora</option>' : ''}${TODO.jugadoras.map((j, k) =>
+      `<option value="${esc(slugJugadora(j.nombre))}" ${k === IDX ? 'selected' : ''}>${dorsal(j) != null ? `${esc(dorsal(j))} · ` : ''}${esc(corto(j))}</option>`).join('')}</select></label>` +
   (TODO.equipoDatos ? `<a href="#equipo" class="equipo" ${EQUIPO && !RIVAL ? 'aria-current="page"' : ''}>Equipo</a>` : '') +
   (TODO.liga?.equipos && SIGUIENTE ? `<a href="#rival-${SIGUIENTE.idRival}" class="equipo" ${RIVAL ? 'aria-current="page"' : ''}>Próximo rival</a>` : '') +
   pestanaDirecto(TODO);
-document.querySelectorAll('#tabs .avatar').forEach((el, k) => avatar(el, TODO.jugadoras[k]));
+if (IDX >= 0) avatar(document.querySelector('#tabs .avatar'), TODO.jugadoras[IDX]);
+else document.querySelector('#tabs .avatar').remove();
+document.getElementById('eligeJugadora').addEventListener('change', e => { location.hash = 'j-' + encodeURIComponent(e.target.value); });
 
 // Enlace a GitHub para lanzar la actualización a mano ("Run workflow"); hace falta haber iniciado sesión en GitHub
 if (TODO.repo) {
@@ -874,7 +900,7 @@ document.getElementById('eVs').innerHTML = conActa.length
 const porJugadora = new Map();
 for (const p of conActa) for (const j of p.jugadoras) {
   if (!j.jugo) continue;
-  const a = porJugadora.get(j.nombre) || { nombre: j.nombre, uuid: j.uuid, dorsal: j.dorsal, seguida: j.seguida, pj: 0, tit: 0,
+  const a = porJugadora.get(j.nombre) || { nombre: j.nombre, uuid: j.uuid, dorsal: j.dorsal, pj: 0, tit: 0,
     minutos: 0, puntos: 0, t1a: 0, t1i: 0, t2a: 0, t2i: 0, t3a: 0, t3i: 0, faltas: 0, masMenos: 0, valoracion: 0, defensas: [] };
   a.pj++; a.tit += j.titular ? 1 : 0; a.dorsal = j.dorsal || a.dorsal; a.uuid = j.uuid || a.uuid;
   a.defensas.push(j.defensa);
@@ -883,7 +909,7 @@ for (const p of conActa) for (const j of p.jugadoras) {
 }
 const colsJ = [
   ['#', j => j.dorsal ?? '', j => +j.dorsal || 0],
-  ['Jugadora', j => nombreConFicha(j.seguida ? `<b>${esc(titleCase(j.nombre))}</b>` : esc(titleCase(j.nombre)), fbcylJugadora(E.temporada, j, E.id)), j => j.nombre],
+  ['Jugadora', j => nombreConFicha(esMia(j.nombre) ? `<b>${esc(titleCase(j.nombre))}</b>` : esc(titleCase(j.nombre)), fbcylJugadora(E.temporada, j, E.id)), j => j.nombre],
   ['PJ', j => j.pj, j => j.pj], ['Tit.', j => j.tit, j => j.tit],
   ['Min/p', j => fmt(j.minutos / j.pj), j => j.minutos / j.pj],
   ['Pts', j => j.puntos, j => j.puntos], ['Pts/p', j => fmt(j.puntos / j.pj), j => j.puntos / j.pj],
@@ -1069,7 +1095,7 @@ const tcCelda = d => d ? `<td data-tip="Sin ella: ${pctTxt(d.tcaBanco, d.tciBanc
 const noJugaron = (p.jugadoras || []).filter(j => !j.jugo);
 document.getElementById('pJugadoras').innerHTML =
   `<tr><th>#</th><th>Jugadora</th><th>Tit.</th><th>Min</th><th>Pts</th><th>T2</th><th>T3</th><th>TL</th><th>Faltas</th><th>+/−</th><th>Val.</th><th>Def.</th><th>% TC rival</th></tr>` +
-  filas.map(j => `<tr><td>${esc(j.dorsal ?? '')}</td><td>${nombreConFicha(j.seguida ? `<b>${esc(titleCase(j.nombre))}</b>` : esc(titleCase(j.nombre)), fbcylJugadora(E.temporada, j, E.id))}</td>
+  filas.map(j => `<tr><td>${esc(j.dorsal ?? '')}</td><td>${nombreConFicha(esMia(j.nombre) ? `<b>${esc(titleCase(j.nombre))}</b>` : esc(titleCase(j.nombre)), fbcylJugadora(E.temporada, j, E.id))}</td>
     <td>${j.titular ? '✓' : ''}</td><td>${j.minutos}</td><td><b>${j.puntos}</b></td><td>${tiros(j, 2)}</td><td>${tiros(j, 3)}</td><td>${tiros(j, 1)}</td>
     <td>${j.faltas}</td><td>${signo(j.masMenos)}</td><td>${j.valoracion}</td>${defCelda(j.defensa)}${tcCelda(j.defensa)}</tr>`).join('') +
   `<tr class="total"><td></td><td>Equipo</td><td></td><td></td><td>${p.puntosEquipo}</td><td>${tiros(N, 2)}</td><td>${tiros(N, 3)}</td><td>${tiros(N, 1)}</td>

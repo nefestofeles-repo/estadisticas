@@ -168,7 +168,9 @@ async function calendario(CONF) {
 }
 
 function arrancar(CONF) {
-  const seguidas = new Set(CONF.seguidas);
+  // Destacada: la jugadora que se eligió en el panel (se recuerda en este navegador)
+  const mia = (() => { try { return localStorage.getItem('jugadora'); } catch { return null; } })();
+  const esMia = n => !!mia && normaliza(n).toLowerCase().replace(/ /g, '-') === mia;
   // directo: datos en vivo de ahora; ultimo: los últimos que hubo (al acabar, el directo deja de responder
   // y el acta oficial tarda unos minutos: mientras tanto se enseña lo último que se vio)
   let partidos = [], directo = null, ultimo = null, ultimoCalendario = 0, fallos = 0;
@@ -305,7 +307,7 @@ function arrancar(CONF) {
     const fila = (j, nuestra) => {
       const d = j.data || {}, pista = enPista.get(normaliza(j.name)), nombre = esc(corto(j.name));
       return `<tr class="${pista ? '' : 'banco'}"><td class="pista">${pista ? '<span class="punto" title="En pista"></span>' : ''}</td>
-        <td>${esc(j.dorsal ?? '')}</td><td class="i">${nuestra && seguidas.has(normaliza(j.name)) ? `<b>${nombre}</b>` : nombre}</td>
+        <td>${esc(j.dorsal ?? '')}</td><td class="i">${nuestra && esMia(j.name) ? `<b>${nombre}</b>` : nombre}</td>
         <td><b>${d.score || 0}</b></td><td>${fCelda(d.faults || 0)}</td><td>${j.timePlayed || 0}</td>
         ${nuestra ? `<td>${tiro(d, 'Two')}</td><td>${tiro(d, 'Three')}</td><td>${tiro(d, 'One')}</td>` : ''}</tr>`;
     };
